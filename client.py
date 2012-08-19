@@ -1,4 +1,6 @@
 #!/usr/local/bin/jython
+import sys
+
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 
 class Client(EWrapper):
@@ -7,15 +9,22 @@ class Client(EWrapper):
     def __init__(self):
         self.m_client = EClientSocket(self)
 
-    def _msghandler(self, msg):
-        print msg
-
     def connect(self, host='', port=7496, client_id=101):
         self.client_id = client_id
         self.m_client.eConnect(host, port, client_id)
 
     def disconnect(self):
         self.m_client.eDisconnect()
+
+    def _errmsghandler(self, errmsg):
+        print >> sys.stderr, errmsg
+
+    def error(self, *args):
+        errmsg = EWrapperMsgGenerator.error(*args)
+        self._errmsghandler(errmsg)
+
+    def _msghandler(self, msg):
+        print msg
 
     def tickPrice(self, tickerId, field, price, canAutoExecute):
         msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
@@ -147,6 +156,7 @@ class Client(EWrapper):
 
     def historicalData(self, reqId, date, open_, high, low, close, volume, 
                        count, WAP, hasGaps):
+        print "Getting historical data now..."
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
