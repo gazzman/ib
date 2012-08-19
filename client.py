@@ -2,6 +2,8 @@
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 
 class Client(EWrapper):
+    nextValidId = None
+
     def __init__(self):
         self.m_client = EClientSocket(self)
 
@@ -90,6 +92,7 @@ class Client(EWrapper):
         self._msghandler(msg)
 
     def nextValidId(self, orderId):
+        self.nextValidId = orderId
         msg = EWrapperMsgGenerator.nextValidId(orderId)
         self._msghandler(msg)
 
