@@ -1,31 +1,20 @@
 #!/usr/local/bin/jython
-try: from collections import OrderedDict #>=2.7
-except ImportError: from ordereddict import OrderedDict #2.6
 from datetime import datetime
 from time import sleep
 import csv
 import sys
 
-from com.ib.client import (Contract, EWrapper, EWrapperMsgGenerator, 
-                           EClientSocket)
+from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
+from com.ib.client import ComboLeg, Contract, Order
 
 from _helpers import _DateHelpers
 
-class CallbackBase(EWrapper):
+class ClientData():
     contracts_dict = dict()
     errs_dict = dict()
     satisfied_requests = dict()
 
-    def __init__(self):
-        self.m_client = EClientSocket(self)
-
-    def connect(self, host='', port=7496, client_id=101):
-        self.client_id = client_id
-        self.m_client.eConnect(host, port, client_id)
-
-    def disconnect(self):
-        self.m_client.eDisconnect()
-
+class CallbackBase(ClientData):
     def _errmsghandler(self, errmsg):
         print >> sys.stderr, errmsg
 
@@ -219,7 +208,7 @@ class CallbackBase(EWrapper):
         msg = EWrapperMsgGenerator.marketDataType(reqId, marketDataType)
         self._msghandler(msg, request_id=reqId)
 
-class Requestor(CallbackBase, _DateHelpers):
+class Requestor(_DateHelpers):
     request_id = 0
     fmt = '%Y%m%d %H:%M:%S GMT'
 
@@ -305,3 +294,36 @@ class Requestor(CallbackBase, _DateHelpers):
             self.request_id += 1
             self.m_client.reqRealTimeBars(self.request_id, contract, bar_sz, 
                                           show, useRTH)
+
+class OrderEntry():
+    def order_builder(self, order_dict):
+        order = Order()
+        for m in order:
+            if m in order_dict: setattr(order, m, order_dict[m])
+        return order
+
+    def gen_combo_contract(self, primitive_contracts_dict):
+        combo_contract = Contract()
+        combo_contract.m_symbol = 'USD'
+        combo_contract.m_secType = 'BAG'
+        combo_contract.m_currency = 'USD'
+        for pc in primitive_contracts_dict:
+            leg = ComboLeg()
+            leg.m_conId = pc.m_conId
+            leg.m_exchange = pc.m_exchange
+            leg.m_action = primitive_contracts_dict[pc]['m_action']
+            leg.m_ratio = primitive_contracts_dict[pc]['m_ratio']
+            combo_contract.m_comboLegs.add(leg)
+        return combo_contract            
+            
+
+class Client(Requestor, OrderEntry, CallbackBase, EWrapper):
+    def __init__(self):
+        self.m_client = EClientSocket(self)
+
+    def connect(self, host='', port=7496, client_id=101):
+        self.client_id = client_id
+        self.m_client.eConnect(host, port, client_id)
+
+    def disconnect(self):
+        self.m_client.eDisconnect()
