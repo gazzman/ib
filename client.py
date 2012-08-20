@@ -8,36 +8,8 @@ import sys
 
 from com.ib.client import (Contract, EWrapper, EWrapperMsgGenerator, 
                            EClientSocket)
-import java.util.Vector as Vector
 
-class DataHelpers():
-    headers = OrderedDict()
-    headers['conId'] = int()
-    headers['symbol'] = str()
-    headers['secType'] = str()
-    headers['expiry'] = str()
-    headers['strike'] = float()
-    headers['right'] = str()
-    headers['multiplier'] = str()
-    headers['exchange'] = str()
-    headers['currency'] = str()
-    headers['localSymbol'] = str()
-    headers['comboLegs'] = Vector()
-    headers['primaryExch'] = str()
-    headers['includeExpired'] = bool()
-    headers['secIdType'] = str()
-    headers['secId'] = str()
-
-    def gen_contract_list(self, csvfile):
-        contract_list = list()
-        cdata = csv.DictReader(open(csvfile, 'rb'))
-        for row in cdata:
-            for header in self.headers:
-                if header not in row:
-                    row[header] = self.headers[header]
-            ordered_row = map(lambda x: row[x], self.headers)
-            contract_list.append(Contract(*ordered_row))
-        return contract_list
+from _helpers import _DateHelpers
 
 class CallbackBase(EWrapper):
     contracts_dict = dict()
@@ -149,9 +121,8 @@ class CallbackBase(EWrapper):
         self._msghandler(msg)
 
     def contractDetails(self, reqId, contractDetails):
-        cn = contractDetails.m_summary
-        self.contracts_dict[(cn.m_symbol, cn.m_secType, 
-                             cn.m_currency, cn.m_exchange)] = cn
+        m_conId = contractDetails.m_summary.m_conId
+        self.contracts_dict[m_conId] = contractDetails
         msg = EWrapperMsgGenerator.contractDetails(reqId, contractDetails)
         self._msghandler(msg, request_id=reqId)
 
@@ -248,44 +219,89 @@ class CallbackBase(EWrapper):
         msg = EWrapperMsgGenerator.marketDataType(reqId, marketDataType)
         self._msghandler(msg, request_id=reqId)
 
-class Requestor(CallbackBase, DataHelpers):
+class Requestor(CallbackBase, _DateHelpers):
     request_id = 0
+    fmt = '%Y%m%d %H:%M:%S GMT'
 
-    def cache_contracts(self, contract_list):
-        if type(contract_list) is str():
-            contract_list = gen_contract_list(contract_list)
-        
+    def _contract_builder(self, contract_dict):
+        contract = Contract()
+        for m in dir(contract):
+            if m in contract_dict: setattr(contract, m, contract_dict[m])
+        return contract
+
+    def _import_contract_list(self, csvfile):
+        contract_list = list()
+        cdata = csv.DictReader(csvfile)
+        for row in cdata:
+            contract_list.append(self._contract_builder(row))
+        return contract_list
+
+    def load_contract_list(self, contract_list, refresh=False):
+        if not self.m_client.isConnected():
+            raise BaseException('Try connecting first.')
+
+        while type(contract_list) is not list:
+            if type(contract_list) is file:
+                contract_list = self._import_contract_list(contract_list)
+            elif type(contract_list) is dict:
+                contract_list = [contract_list]
+            else:
+                raise TypeError('Valid types are file, dict, and list.')
+
         first_request = self.request_id + 1
-        for s in l:
+        for contract in contract_list:
+            if type(contract) is not Contract:
+                contract = self._contract_builder(contract)
             self.request_id += 1
-            cn = Contract()
-            (cn.m_symbol, cn.m_secType, cn.m_currency, cn.m_exchange) = s
-            self.m_client.reqContractDetails(self.request_id, cn)
+            self.m_client.reqContractDetails(self.request_id, contract)
         last_request = self.request_id
-        big = set(range(first_request, last_request + 1))
-        lil = set(['pooper'])
+        lil = set(range(first_request, last_request + 1))
+        big = set(self.errs_dict.keys() + self.satisfied_requests.keys())
+        count = 0
         while not lil.issubset(big):
-            print >> sys.stderr, big
-            print >> sys.stderr, lil
-            lil = set(self.errs_dict.keys() + self.satisfied_requests.keys())
-            print >> sys.stderr, 'No there yet holmes!'
-            sleep(1)
+            count += 1
+            big = set(self.errs_dict.keys() + self.satisfied_requests.keys())
+            if count % 10 == 0:
+                print >> sys.stderr, 'Waiting for responses...'
+                sleep(.01)
 
-    def get_contract(self, *args, **kwargs):
-        '''
-        Make sure to pass args as a 4-tuple of 
-            (symbol, secType, currency, exchange) if it's a stock
-        
-        '''
-        if args not in self.contracts_dict:# or refresh:
+    def get_contract_list(self, cd_match=dict(), c_match=dict()):
+        sub_contract_dict = dict()
+        for m_conId in self.contracts_dict:
+            con_det = self.contracts_dict[m_conId]
+            if m_conId not in sub_contract_dict and len(cd_match) > 0:
+                for m in cd_match:
+                    if getattr(con_det, m) == cd_match[m]: 
+                        sub_contract_dict[m_conId] = con_det
+                        break
+            if m_conId not in sub_contract_dict and len(c_match) > 0:
+                con = self.contracts_dict[m_conId].m_summary
+                for m in c_match:
+                    if getattr(con, m) == c_match[m]: 
+                        sub_contract_dict[m_conId] = con_det
+                        break
+        return sub_contract_dict
+
+    def get_mkt_data(self, contract_list):
+        for contract in contract_list:
             self.request_id += 1
-            cn = Contract()
-            (cn.m_symbol, cn.m_secType, cn.m_currency, cn.m_exchange) = args
-            self.m_client.reqContractDetails(self.request_id, cn)
-            while not (args in self.contracts_dict):
-                if self.request_id in self.errs_dict:
-                    (e_code, e_msg) = errs_dict[self.request_id]
-                    del errs_dict[self.request_id]
-                    raise BaseError(' | '.join([request_id, e_code, e_msg]))
-                sleep(3)
-        return self.contracts_dict[args]        
+            self.m_client.reqMktData(self.request_id, contract, None, True)
+
+    def get_historical_data(self, contract_list, date=None, duration='1 D', 
+                            bar_sz='5 mins', show='TRADES', useRTH=1):
+        if date is None:
+            to_date = self._convert_to_gmt(datetime.now()).strftime(self.fmt)
+        else:
+            to_date = self._convert_to_gmt(date).strftime(self.fmt)
+
+        for contract in contract_list:
+            self.request_id += 1
+            self.m_client.reqHistoricalData(self.request_id, contract, to_date, 
+                                            duration, bar_sz, show, useRTH, 1)
+
+    def get_rt_bar(self, contract_list, bar_sz=5, show='TRADES', 
+                   useRTH=1):
+        for contract in contract_list:
+            self.request_id += 1
+            self.m_client.reqRealTimeBars(self.request_id, contract, bar_sz, 
+                                          show, useRTH)
