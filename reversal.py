@@ -58,13 +58,14 @@ class Reversal():
         self.p_req = self.client.generate_contract(put)
 
     def get_contract_ids(self):
-        while (self.c_req not in (self.client.requested_contracts.keys()
-                                  + self.client.errs_dict.keys())
-               or self.s_req not in (self.client.requested_contracts.keys()
-                                     + self.client.errs_dict.keys())
-               or self.p_req not in (self.client.requested_contracts.keys()
-                                     + self.client.errs_dict.keys())
-              ): sleep(.1)
+        all_requests = (self.client.requested_contracts.keys()
+                        + self.client.errs_dict.keys())
+        while (self.c_req not in all_requests
+               or self.s_req not in all_requests
+               or self.p_req not in all_requests):
+            sleep(.1)
+            all_requests = (self.client.requested_contracts.keys()
+                            + self.client.errs_dict.keys())
 
         if (self.c_req or self.s_req or self.p_req) in self.client.errs_dict:
             return False
