@@ -27,12 +27,16 @@ class Reversal():
             expiry should be in the form YYMMDD.
         '''
         self.request_contract_ids(ticker, expiry, strike)
-        self.get_contract_ids()
-        self.gen_combo_contract()
-        self.gen_order(qty, long=long)
-        order_id = self.client.nextId
-        self.place_order()
-        return order_id
+        if self.get_contract_ids():
+            self.gen_combo_contract()
+            self.gen_order(qty, long=long)
+            order_id = self.client.nextId
+            self.place_order()
+            return order_id
+        else:
+            errmsg = 'Not all legs exist for ticker %s expiry %s strike %s'
+            errmsg = errmsg % (ticker, expiry, str(strike))
+            print >> sys.stderr, '*'*60, errmsg, '*'*60
 
     def request_contract_ids(self, ticker, expiry, strike):
         if len(expiry) != 6: raise Exception('Expiry format should be YYMMDD')
@@ -54,13 +58,21 @@ class Reversal():
         self.p_req = self.client.generate_contract(put)
 
     def get_contract_ids(self):
-        while (self.c_req not in self.client.requested_contracts 
-               or self.s_req not in self.client.requested_contracts
-               or self.p_req not in self.client.requested_contracts):
-            sleep(.1)
+        while (self.c_req not in (self.client.requested_contracts.keys()
+                                  + self.client.errs_dict.keys())
+               or self.s_req not in (self.client.requested_contracts.keys()
+                                     + self.client.errs_dict.keys())
+               or self.p_req not in (self.client.requested_contracts.keys()
+                                     + self.client.errs_dict.keys())
+              ): sleep(.1)
+
+        if self.c_req or self.s_req or self.p_req in self.client.errs_dict:
+            return False
+
         self.c_con_id = self.client.requested_contracts[self.c_req].m_conId 
         self.s_con_id = self.client.requested_contracts[self.s_req].m_conId 
         self.p_con_id = self.client.requested_contracts[self.p_req].m_conId 
+        return True
 
     def gen_combo_contract(self):
         c_action = dict({'m_conId': self.c_con_id, 'm_action': 'BUY',
