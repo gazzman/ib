@@ -7,6 +7,8 @@ import threading
 
 from reversal import Reversal
 
+r = Reversal(client_id=1001)
+
 errmsg = 'Failed to specify long or short for ticker %s, expiry %s, strike %s'
 
 def gen_client_id():
@@ -27,13 +29,11 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
         elif long.lower() == 'short': long = False
         else: raise Exception(errmsg % (ticker, expiry, strike))
         client_id = gen_client_id()
-        r = Reversal(client_id=client_id)
         order_id = r.enter_position(ticker, expiry, strike, qty=qty, long=long)
-        while order_id not in r.client.orders: sleep(.5)
-        r.client.disconnect()
 
 if __name__ == '__main__':
     HOST = sys.argv[1]
     PORT = int(sys.argv[2])
     server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
     server.serve_forever()
+    r.client.disconnect()
