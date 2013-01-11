@@ -18,9 +18,9 @@ class Reversal():
     combo_base = {'m_symbol': 'USD', 'm_secType': 'BAG', 'm_exchange': 'SMART',
                   'm_currency': 'USD'}
 
-    def __init__(self):
+    def __init__(self, host='', port=7496, client_id=101):
         self.client = Client()
-        self.client.connect()
+        self.client.connect(host, port, client_id)
 
     def enter_position(self, ticker, expiry, strike, qty=1, long=True):
         ''' ticker, strike, and expiry are all strings.
