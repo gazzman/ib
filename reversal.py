@@ -66,7 +66,7 @@ class Reversal():
                                      + self.client.errs_dict.keys())
               ): sleep(.1)
 
-        if self.c_req or self.s_req or self.p_req in self.client.errs_dict:
+        if (self.c_req or self.s_req or self.p_req) in self.client.errs_dict:
             return False
 
         self.c_con_id = self.client.requested_contracts[self.c_req].m_conId 
