@@ -36,7 +36,7 @@ class Reversal():
         else:
             errmsg = 'Not all legs exist for ticker %s expiry %s strike %s'
             errmsg = errmsg % (ticker, expiry, str(strike))
-            print >> sys.stderr, '*'*60, errmsg, '*'*60
+            print >> sys.stderr, '*'*10, errmsg, '*'*10
 
     def request_contract_ids(self, ticker, expiry, strike):
         if len(expiry) != 6: raise Exception('Expiry format should be YYMMDD')
@@ -60,13 +60,17 @@ class Reversal():
     def get_contract_ids(self):
         all_requests = (self.client.requested_contracts.keys()
                         + self.client.errs_dict.keys())
+        count = 0
         while (self.c_req not in all_requests
                or self.s_req not in all_requests
                or self.p_req not in all_requests):
+            count += 1
+            if count % 10 == 0: print >> sys.stderr, 'cycle %i' % count
             sleep(.1)
             all_requests = (self.client.requested_contracts.keys()
                             + self.client.errs_dict.keys())
 
+        print >> sys.stderr, 'Took %i cycles.' % count
         if (self.c_req or self.s_req or self.p_req) in self.client.errs_dict:
             return False
 
