@@ -105,7 +105,7 @@ if __name__ == "__main__":
     if long_or_short.lower().strip() == 'long': long=True
     elif long_or_short.lower().strip() == 'short': long=False
     else: raise Exception('You have to specify long or short.')
-    order_id = r.enter_position(ticker, expiry, strike, int(qty), long=long)
+    order_id = r.enter_position(ticker, expiry, strike, qty, long=long)
     
     while order_id not in r.client.orders: sleep(.5)
     
