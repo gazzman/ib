@@ -53,13 +53,13 @@ class Reversal():
         put = dict(self.option_base.items() 
                    + {'m_localSymbol': put_id}.items())
 
-        self.c_req = self.client.generate_contract(call)
-        self.s_req = self.client.generate_contract(stock)
-        self.p_req = self.client.generate_contract(put)
+        self.c_req = self.client.request_contract(call)
+        self.s_req = self.client.request_contract(stock)
+        self.p_req = self.client.request_contract(put)
 
     def get_contract_ids(self):
         all_requests = (self.client.requested_contracts.keys()
-                        + self.client.errs_dict.keys())
+                        + self.client.request_errors.keys())
         count = 0
         while (self.c_req not in all_requests
                or self.s_req not in all_requests
@@ -68,7 +68,7 @@ class Reversal():
             if count % 10 == 0: print >> sys.stderr, 'cycle %i' % count
             sleep(.1)
             all_requests = (self.client.requested_contracts.keys()
-                            + self.client.errs_dict.keys())
+                            + self.client.request_errors.keys())
 
         print >> sys.stderr, 'Took %i cycles.' % count
         if (self.c_req or self.s_req or self.p_req) in self.client.errs_dict:
