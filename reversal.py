@@ -18,28 +18,32 @@ class Reversal():
     combo_base = {'m_symbol': 'USD', 'm_secType': 'BAG', 'm_exchange': 'SMART',
                   'm_currency': 'USD'}
 
-    def __init__(self, host='', port=7496, client_id=101):
-        self.client = Client()
-        self.client.connect(host, port, client_id)
+    def __init__(self, host='', port=7496, client_id=82):
+        self.client = Client(client_id)
+        self.client.connect(host, port)
 
-    def enter_position(self, ticker, expiry, strike, qty=1, long=True):
+    def enter_position(self, ticker, expiry, strike, qty=1, longshort=True):
         ''' ticker, strike, and expiry are all strings.
             expiry should be in the form YYMMDD.
         '''
         self.request_contract_ids(ticker, expiry, strike)
         if self.get_contract_ids():
             self.gen_combo_contract()
-            self.gen_order(qty, long=long)
+            self.gen_order(qty, longshort=longshort)
             order_id = self.client.nextId
             self.place_order()
             return order_id
         else:
             errmsg = 'Not all legs exist for ticker %s expiry %s strike %s'
             errmsg = errmsg % (ticker, expiry, str(strike))
-            print >> sys.stderr, '*'*10, errmsg, '*'*10
+            self.client.logger.error('%s %s %s' % ('*'*3, errmsg, '*'*3))
+            return False
 
     def request_contract_ids(self, ticker, expiry, strike):
-        if len(expiry) != 6: raise Exception('Expiry format should be YYMMDD')
+        if len(expiry) != 6:
+            msg = 'Expiry format should be YYMMDD, not %s' % str(expiry)
+            self.client.logger.fatal(msg)
+            raise Exception(msg)
         ticker = ticker.upper().strip()
         strike = Decimal(str(strike))*1000
 
@@ -59,19 +63,23 @@ class Reversal():
 
     def get_contract_ids(self):
         all_requests = (self.client.requested_contracts.keys()
-                        + self.client.request_errors.keys())
+                        + self.client.req_errs.keys())
         count = 0
         while (self.c_req not in all_requests
                or self.s_req not in all_requests
                or self.p_req not in all_requests):
             count += 1
-            if count % 10 == 0: print >> sys.stderr, 'cycle %i' % count
+            if count % 10 == 0: 
+                msg = 'On iteration %i for requests %i, %i, %i'
+                msgdata = (count, self.c_req, self.s_req, self.p_req)
+                self.client.logger.debug(msg, *msgdata)
             sleep(.1)
             all_requests = (self.client.requested_contracts.keys()
-                            + self.client.request_errors.keys())
-
-        print >> sys.stderr, 'Took %i cycles.' % count
-        if (self.c_req or self.s_req or self.p_req) in self.client.errs_dict:
+                            + self.client.req_errs.keys())
+        msg = 'Took %0.1f seconds to get contract info for requests %i, %i, %i'
+        msgdata = (count*0.1, self.c_req, self.s_req, self.p_req)
+        self.client.logger.debug(msg, *msgdata)
+        if (self.c_req or self.s_req or self.p_req) in self.client.req_errs:
             return False
 
         self.c_con_id = self.client.requested_contracts[self.c_req].m_conId 
@@ -96,11 +104,11 @@ class Reversal():
         [setattr(self.combo_contract, m, combo_params[m]) 
             for m in dir(self.combo_contract) if m in combo_params]
 
-    def gen_order(self, qty, long=True):
+    def gen_order(self, qty, longshort=True):
         qty = int(qty)
         self.order = Order()
         order_params = {'m_totalQuantity': qty, 'm_orderType': 'MKT'}
-        if long: order_params['m_action'] = 'BUY'
+        if longshort: order_params['m_action'] = 'BUY'
         else: order_params['m_action'] = 'SELL'
         [setattr(self.order, m, order_params[m]) for m in dir(self.order)
             if m in order_params]
@@ -116,14 +124,14 @@ if __name__ == "__main__":
     expiry = sys.argv[2]
     strike = sys.argv[3]
     qty = sys.argv[4]
-    long_or_short = sys.argv[5]
+    longshort = sys.argv[5]
 
     r = Reversal()
-    if long_or_short.lower().strip() == 'long': long=True
-    elif long_or_short.lower().strip() == 'short': long=False
+    if longshort.lower().strip() == 'long': ls=True
+    elif longshort.lower().strip() == 'short': ls=False
     else: raise Exception('You have to specify long or short.')
-    order_id = r.enter_position(ticker, expiry, strike, qty, long=long)
-    
+    order_id = r.enter_position(ticker, expiry, strike, qty, longshort=ls)
+
     while order_id not in r.client.orders: sleep(.5)
-    
+
     r.client.disconnect()
