@@ -8,25 +8,37 @@ import sys
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 from com.ib.client import Contract
 
+LOGLEVEL = logging.DEBUG
+
 class CallbackBase():
     hist_data = dict()
     realtime_bars = dict()
     fundamental_data = dict()
     satisfied_requests = dict()
-    request_errors = dict()
+    req_errs = dict()
     requested_contracts = dict()
     orders = dict()
 
     def error(self, *args):
+        ''' We either get an (int, int, str), (Exception, ), or (str, )
+        '''
         errmsg = EWrapperMsgGenerator.error(*args)
-        if len(args) == 3: 
+        errmsg = ' '.join(errmsg.split('\n'))
+        if len(args) == 3:
             (req_id, err_code, err_msg) = args
-            if req_id >= 0: self.request_errors[req_id] = (err_code, err_msg)
-            if err_code == 162: self.logger.warning(errmsg)
+            if req_id >= 0: self.req_errs[req_id] = (err_code, err_msg)
+            if err_code == 162: self.logger.warning(errmsg) # historical data
+            elif err_code == 399: self.logger.warning(errmsg) # after-hours
             elif err_code < 1100: self.logger.error(errmsg)
             elif err_code < 2100: self.logger.critical(errmsg)
             else: self.logger.warning(errmsg)
-        else: self.logger.error(errmsg)
+        elif type(args[0]) is Exception:
+            self.logger.error(args[0])
+            raise args[0]
+        elif type(args[0]) is str: self.logger.error(errmsg)
+        else:
+            m = 'Unexpected result from AnyWrapperMsgGenerator: %s, %s'
+            self.logger.error(m % (str(args[0]), str(type(args[0]))))
 
     def msghandler(self, msg, req_id=None, order_id=None):
         if req_id is not None:
@@ -91,15 +103,17 @@ class CallbackBase():
 #                                               remaining, avgFillPrice, permId, 
 #                                               parentId, lastFillPrice, 
 #                                               clientId, whyHeld)
-        msg = 'cid: %i, oid: %i, status: %s'
+        msg = 'submitted by: %2i, oid: %2i, status: %s'
         self.msghandler(msg % (clientId, orderId, status))
 
     def openOrder(self, orderId, contract, order, orderState):
 #        msg = EWrapperMsgGenerator.openOrder(orderId, contract, order, 
 #                                             orderState)
-        msg = 'cid: %i, oid: %i, action: %s, type: %s, symbol: %s, secType: %s'
+        msg = 'submitted by: %2i, oid: %2i, action: %s, type: %s, symbol: %s'
+        msg = ', '.join([msg,  'secType: %s, qty: %3i'])
         msg_data = (order.m_clientId, orderId, order.m_action, 
-                    order.m_orderType, contract.m_symbol, contract.m_secType)
+                    order.m_orderType, contract.m_symbol, contract.m_secType,
+                    order.m_totalQuantity)
         self.msghandler(msg % msg_data)
 
     def openOrderEnd(self):
@@ -136,7 +150,7 @@ class CallbackBase():
     def contractDetails(self, reqId, contractDetails):
         self.requested_contracts[reqId] = contractDetails.m_summary
 #        msg = EWrapperMsgGenerator.contractDetails(reqId, contractDetails)
-        msg = 'req_id = %i recived details for'
+        msg = 'reqId = %i received details for'
         msg = ' '.join([msg,  'con_id: %i symbol: %s, secType: %s'])
         msg_data = (reqId, contractDetails.m_summary.m_conId,
                     contractDetails.m_summary.m_symbol,
@@ -243,30 +257,36 @@ class CallbackBase():
         self.msghandler('marketDataType: ' + msg, req_id=reqId)
 
 class Client(CallbackBase, EWrapper):
-    logger_format = ('%(levelno)s, [%(asctime)s #%(process)d]'
-                     + '%(levelname)6s: %(message)s')
-    logger = logging.getLogger('IBClient')
-
-    def __init__(self):
+    def __init__(self, client_id=1):
+        self.client_id = client_id
         self.init_logger()
         self.req_id = 0
         self.m_client = EClientSocket(self)
 
     def init_logger(self):
+        cid = '%2i' % self.client_id
+        logger_fmt = ' '.join(['%(levelno)s, [%(asctime)s #%(process)5i]',
+                               'client', cid, '%(levelname)8s: %(message)s'])
+        self.logger = logging.getLogger('IBClient')
         hdlr = TimedRotatingFileHandler('ib_client.log', when='midnight')
-        fmt = logging.Formatter(fmt=self.logger_format)
+        fmt = logging.Formatter(fmt=logger_fmt)
         hdlr.setFormatter(fmt)
         self.logger.addHandler(hdlr)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(LOGLEVEL)
 
-    def connect(self, host='', port=7496, client_id=101):
-        self.client_id = client_id
-        self.m_client.eConnect(host, port, client_id)
+    def connect(self, host='', port=7496):
+        self.m_client.eConnect(host, port, self.client_id)
 
     def disconnect(self):
         self.m_client.eDisconnect()
 
-    def request_contract(self, key_dic, show_detail=False):
+    def request_all_orders(self):
+        self.m_client.reqAllOpenOrders()
+
+    def request_open_orders(self):
+        self.m_client.reqOpenOrders()        
+
+    def request_contract(self, key_dic):
         contract = Contract()
         [setattr(contract, m, key_dic[m]) for m in dir(contract)
             if m in key_dic]
@@ -277,7 +297,7 @@ class Client(CallbackBase, EWrapper):
     def request_historical_data(self, contract, end_time=None, 
                                 duration='1 D', bar_size='1 min', 
                                 show='TRADES'):
-        if not end_time: end_time = datetime.now().strftext('%Y%m%d %H:%M:%S')
+        if not end_time: end_time = datetime.now().strftime('%Y%m%d %H:%M:%S')
         self.req_id += 1
         self.hist_data[self.req_id] = {'contract': contract, 
                                        'end_time': end_time,
@@ -286,6 +306,7 @@ class Client(CallbackBase, EWrapper):
                                        'show': show}
         self.m_client.reqHistoricalData(self.req_id, contract, end_time,
                                         duration, bar_size, show, 1, 1)
+        return self.req_id
 
     def cancel_historical_data(self, req_id):
         self.m_client.cancelHistoricalData(req_id)
@@ -298,6 +319,7 @@ class Client(CallbackBase, EWrapper):
         self.realtime_bars[self.req_id] = {'contract': contract,
                                            'show': show}
         self.m_client.reqRealTimeBars(self.req_id, contract, 5, show, 0)
+        return self.req_id
 
     def cancel_realtime_bars(self, req_id):
         self.m_client.cancelRealTimeBars(req_id)
@@ -309,7 +331,8 @@ class Client(CallbackBase, EWrapper):
         self.req_id += 1
         self.fundamental_data[self.req_id] = {'contract': contract,
                                               'report_type': report_type}
-        self.m_client.requestFundamentalData(req_id, contract, report_type)
+        self.m_client.reqFundamentalData(self.req_id, contract, report_type)
+        return self.req_id
 
     def cancel_fundamentals(self, req_id):
         self.m_client.cancelFundamentalData(req_id)
