@@ -5,7 +5,7 @@ import SocketServer
 import sys
 import threading
 
-from reversal import Reversal
+from ib.reversal import Reversal
 
 errbase = 'for ticker %s, expiry %s, strike %s, qty %s'
 errmsg1 = ' '.join(['Failed to specify long or short', errbase])
