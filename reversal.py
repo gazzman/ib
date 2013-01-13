@@ -66,8 +66,8 @@ class Reversal():
                         + self.client.failed_contracts.keys())
         count = 0
         while (self.c_req not in all_requests
-               or self.s_req not in all_requests
-               or self.p_req not in all_requests):
+            or self.s_req not in all_requests
+            or self.p_req not in all_requests):
             count += 1
             if count % 10 == 0: 
                 msg = 'On iteration %i for requests %i, %i, %i'
@@ -79,8 +79,9 @@ class Reversal():
         msg = 'Took %0.1f seconds to get contract info for requests %i, %i, %i'
         msgdata = (count*0.1, self.c_req, self.s_req, self.p_req)
         self.client.logger.debug(msg, *msgdata)
-        if (self.c_req or self.s_req or self.p_req) in self.client.req_errs:
-            return False
+        if (self.c_req 
+         or self.s_req 
+         or self.p_req) in self.client.failed_contracts: return False
 
         self.c_con_id = self.client.requested_contracts[self.c_req].m_conId 
         self.s_con_id = self.client.requested_contracts[self.s_req].m_conId 
