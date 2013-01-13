@@ -2,6 +2,7 @@
 from datetime import datetime
 from time import sleep
 from logging.handlers import TimedRotatingFileHandler
+import java.io.EOFException
 import logging
 import sys
 
@@ -17,6 +18,7 @@ class CallbackBase():
     satisfied_requests = dict()
     req_errs = dict()
     requested_contracts = dict()
+    failed_contracts = dict()
     orders = dict()
 
     def error(self, *args):
@@ -26,13 +28,17 @@ class CallbackBase():
         errmsg = ' '.join(errmsg.split('\n'))
         if len(args) == 3:
             (req_id, err_code, err_msg) = args
-            if req_id >= 0: self.req_errs[req_id] = (err_code, err_msg)
-            if err_code == 162: self.logger.warning(errmsg) # historical data
-            elif err_code == 399: self.logger.warning(errmsg) # after-hours
+            if err_code == 200:
+                self.failed_contracts[req_id] = (err_code, err_msg)
+            elif req_id >= 0: self.req_errs[req_id] = (err_code, err_msg)
+            if err_code == 162: self.logger.warn(errmsg) # historical data
+            elif err_code == 200: self.logger.warn(errmsg) # no contract
+            elif err_code == 202: self.logger.info(errmsg) # cancel order
+            elif err_code == 399: self.logger.warn(errmsg) # after-hours
             elif err_code < 1100: self.logger.error(errmsg)
             elif err_code < 2100: self.logger.critical(errmsg)
-            else: self.logger.warning(errmsg)
-        elif type(args[0]) is Exception:
+            else: self.logger.warn(errmsg)
+        elif type(args[0]) is (Exception or java.io.EOFException):
             self.logger.error(args[0])
             raise args[0]
         elif type(args[0]) is str: self.logger.error(errmsg)
@@ -92,12 +98,15 @@ class CallbackBase():
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice, 
                     permId, parentId, lastFillPrice, clientId, whyHeld):
 
-        self.orders[orderId] = {'status': status, 'filled': filled, 
-                                'remaining': remaining, 
-                                'avgFillPrice': avgFillPrice, 'permId': permId,
-                                'parentId': parentId, 
-                                'lastFillPrice': lastFillPrice,
-                                'clientId': clientId, 'whyHeld': whyHeld}
+        if clientId not in self.orders: self.orders[clientId] = dict()
+        self.orders[clientId][orderId] = {'status': status, 'filled': filled, 
+                                          'remaining': remaining, 
+                                          'avgFillPrice': avgFillPrice,
+                                          'permId': permId,
+                                          'parentId': parentId, 
+                                          'lastFillPrice': lastFillPrice,
+                                          'clientId': clientId,
+                                          'whyHeld': whyHeld}
 
 #        msg = EWrapperMsgGenerator.orderStatus(orderId, status, filled, 
 #                                               remaining, avgFillPrice, permId, 
@@ -257,7 +266,7 @@ class CallbackBase():
         self.msghandler('marketDataType: ' + msg, req_id=reqId)
 
 class Client(CallbackBase, EWrapper):
-    def __init__(self, client_id=1):
+    def __init__(self, client_id=9):
         self.client_id = client_id
         self.init_logger()
         self.req_id = 0
@@ -279,12 +288,25 @@ class Client(CallbackBase, EWrapper):
 
     def disconnect(self):
         self.m_client.eDisconnect()
+        self.logger.info('Client disconnected')
+
+    def request_open_orders(self):
+        self.m_client.reqOpenOrders()        
 
     def request_all_orders(self):
         self.m_client.reqAllOpenOrders()
 
-    def request_open_orders(self):
-        self.m_client.reqOpenOrders()        
+    def cancel_order(self, order_id):
+        self.m_client.cancelOrder(order_id)
+
+    def cancel_open_orders(self):
+        self.request_open_orders()
+        if self.client_id not in self.orders:
+            self.logger.error('Client has no open orders')
+        else:
+            [self.cancel_order(x) for x in self.orders[self.client_id] 
+                if self.orders[self.client_id][x]['status'].lower()
+                     != 'cancelled']
 
     def request_contract(self, key_dic):
         contract = Contract()
@@ -313,7 +335,7 @@ class Client(CallbackBase, EWrapper):
 
     def cancel_all_historical_data(self):
         [self.cancel_historical_data(x) for x in self.hist_data]
-        
+
     def start_realtime_bars(self, contract, show='TRADES'):
         self.req_id += 1
         self.realtime_bars[self.req_id] = {'contract': contract,
