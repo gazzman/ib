@@ -63,7 +63,7 @@ class Reversal():
 
     def get_contract_ids(self):
         all_requests = (self.client.requested_contracts.keys()
-                        + self.client.req_errs.keys())
+                        + self.client.failed_contracts.keys())
         count = 0
         while (self.c_req not in all_requests
                or self.s_req not in all_requests
@@ -75,7 +75,7 @@ class Reversal():
                 self.client.logger.debug(msg, *msgdata)
             sleep(.1)
             all_requests = (self.client.requested_contracts.keys()
-                            + self.client.req_errs.keys())
+                            + self.client.failed_contracts.keys())
         msg = 'Took %0.1f seconds to get contract info for requests %i, %i, %i'
         msgdata = (count*0.1, self.c_req, self.s_req, self.p_req)
         self.client.logger.debug(msg, *msgdata)
