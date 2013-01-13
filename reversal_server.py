@@ -47,6 +47,6 @@ if __name__ == '__main__':
         r.client.disconnect()
         r.client.logger.warn('Reversal server shutdown')
         sys.exit(0)
+    signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
     server.serve_forever()
-
