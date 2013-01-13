@@ -276,7 +276,7 @@ class Client(CallbackBase, EWrapper):
         cid = '%2i' % self.client_id
         logger_fmt = ' '.join(['%(levelno)s, [%(asctime)s #%(process)5i]',
                                'client', cid, '%(levelname)8s: %(message)s'])
-        self.logger = logging.getLogger('IBClient')
+        self.logger = logging.getLogger(__name__)
         hdlr = TimedRotatingFileHandler('ib_client.log', when='midnight')
         fmt = logging.Formatter(fmt=logger_fmt)
         hdlr.setFormatter(fmt)
