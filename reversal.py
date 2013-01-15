@@ -62,7 +62,7 @@ class Reversal():
         self.p_req = self.client.request_contract(put)
 
     def get_contract_ids(self):
-        all_requests = (self.client.requested_contracts.keys()
+        all_requests = (self.client.req_contracts.keys()
                         + self.client.failed_contracts.keys())
         count = 0
         while (self.c_req not in all_requests
@@ -74,7 +74,7 @@ class Reversal():
                 msgdata = (count, self.c_req, self.s_req, self.p_req)
                 self.client.logger.debug(msg, *msgdata)
             sleep(.1)
-            all_requests = (self.client.requested_contracts.keys()
+            all_requests = (self.client.req_contracts.keys()
                             + self.client.failed_contracts.keys())
         msg = 'Took %0.1f seconds to get contract info for requests %i, %i, %i'
         msgdata = (count*0.1, self.c_req, self.s_req, self.p_req)
@@ -83,9 +83,9 @@ class Reversal():
          or self.s_req 
          or self.p_req) in self.client.failed_contracts: return False
 
-        self.c_con_id = self.client.requested_contracts[self.c_req].m_conId 
-        self.s_con_id = self.client.requested_contracts[self.s_req].m_conId 
-        self.p_con_id = self.client.requested_contracts[self.p_req].m_conId 
+        self.c_con_id = self.client.req_contracts[self.c_req][0].m_conId 
+        self.s_con_id = self.client.req_contracts[self.s_req][0].m_conId 
+        self.p_con_id = self.client.req_contracts[self.p_req][0].m_conId 
         return True
 
     def gen_combo_contract(self):

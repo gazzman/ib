@@ -17,7 +17,7 @@ class CallbackBase():
     fundamental_data = dict()
     satisfied_requests = dict()
     req_errs = dict()
-    requested_contracts = dict()
+    req_contracts = dict()
     failed_contracts = dict()
     orders = dict()
 
@@ -155,7 +155,8 @@ class CallbackBase():
         self.logger.info('nextValidID: ' + msg)
 
     def contractDetails(self, reqId, contractDetails):
-        self.requested_contracts[reqId] = contractDetails.m_summary
+        if reqId not in self.req_contracts:  self.req_contracts[reqId] = list()
+        self.req_contracts[reqId].append(contractDetails.m_summary)
 #        msg = EWrapperMsgGenerator.contractDetails(reqId, contractDetails)
         msg = 'reqId = %i received details for'
         msg = ' '.join([msg,  'con_id: %i symbol: %s, secType: %s'])
