@@ -44,7 +44,7 @@ class CallbackBase():
         elif type(args[0]) is str: self.logger.error(errmsg)
         else:
             m = 'Unexpected result from AnyWrapperMsgGenerator: %s, %s'
-            self.logger.error(m % (str(args[0]), str(type(args[0]))))
+            self.logger.error(m, str(args[0]), str(type(args[0])))
 
     def msghandler(self, msg, req_id=None, order_id=None):
         if req_id is not None:
@@ -53,11 +53,10 @@ class CallbackBase():
 
     def datahandler(self, fnm, req_id, datamsg):
         self.logger.debug('Received datapoint for req_id %i' % req_id)
-        fnm = '%i_%s.csv' % (cid, show)
         f = open(fnm, 'a') 
         f.write('%s\n' % datamsg)
         f.close()
-        self.logger.debug('Wrote datapoint for req_id %i to %s' % req_id, fnm)
+        self.logger.debug('Wrote datapoint for req_id %i to %s', req_id, fnm)
 
     def tickPrice(self, tickerId, field, price, canAutoExecute):
         msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
@@ -154,7 +153,6 @@ class CallbackBase():
         self.nextId = orderId
         msg = EWrapperMsgGenerator.nextValidId(orderId)
         self.logger.info('nextValidID: ' + msg)
-#        self.msghandler(msg)
 
     def contractDetails(self, reqId, contractDetails):
         self.requested_contracts[reqId] = contractDetails.m_summary
@@ -216,9 +214,9 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        fnm = '%i_%s.csv' % (self.hist_data[req_id]['contract'].m_conId,
-                             self.hist_data[req_id]['show'])
-        self.datahandler(fnm, req_id, msg)
+        fnm = '%i_%s.csv' % (self.hist_data[reqId]['contract'].m_conId,
+                             self.hist_data[reqId]['show'])
+        self.datahandler(fnm, reqId, msg)
 
     def scannerParameters(self, xml):
         msg = EWrapperMsgGenerator.scannerParameters(xml)
@@ -239,9 +237,9 @@ class CallbackBase():
                     count):
         msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
                                                close, volume, wap, count)
-        fnm = '%i_%s.csv' % (self.realtime_bars[req_id]['contract'].m_conId,
-                             self.realtime_bars[req_id]['show'])
-        self.datahandler(fnm, req_id, msg)
+        fnm = '%i_%s.csv' % (self.realtime_bars[reqId]['contract'].m_conId,
+                             self.realtime_bars[reqId]['show'])
+        self.datahandler(fnm, reqId, msg)
 
     def currentTime(self, time):
         msg = EWrapperMsgGenerator.currentTime(time)
