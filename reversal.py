@@ -18,9 +18,10 @@ class Reversal():
     combo_base = {'m_symbol': 'USD', 'm_secType': 'BAG', 'm_exchange': 'SMART',
                   'm_currency': 'USD'}
 
-    def __init__(self, host='', port=7496, client_id=82):
+    def __init__(self, host='', port=7496, client_id=82, paper_trader=False):
         self.client = Client(client_id)
         self.client.connect(host, port)
+        self.paper_trader = paper_trader
 
     def enter_position(self, ticker, expiry, strike, qty=1, longshort=True):
         ''' ticker, strike, and expiry are all strings.
@@ -28,11 +29,16 @@ class Reversal():
         '''
         self.request_contract_ids(ticker, expiry, strike)
         if self.get_contract_ids():
-            self.gen_combo_contract()
-            self.gen_order(qty, longshort=longshort)
-            order_id = self.client.nextId
-            self.place_order()
-            return order_id
+            if self.paper_trader:
+                self.gen_separate_orders(qty, longshort)
+                order_ids = self.place_separate_orders()
+                return order_ids
+            else:                
+                self.gen_combo_contract()
+                self.gen_order(qty, longshort=longshort)
+                order_id = self.client.nextId
+                self.place_order()
+                return order_id
         else:
             errmsg = 'Not all legs exist for ticker %s expiry %s strike %s'
             errmsg = errmsg % (ticker, expiry, str(strike))
@@ -105,6 +111,23 @@ class Reversal():
         [setattr(self.combo_contract, m, combo_params[m]) 
             for m in dir(self.combo_contract) if m in combo_params]
 
+    def gen_separate_orders(self, qty=1, longshort=True):
+        c_order = {'m_totalQuantity': 1*qty, 'm_orderType': 'MKT'}
+        s_order = {'m_totalQuantity': 100*qty, 'm_orderType': 'MKT'}
+        p_order = {'m_totalQuantity': 1*qty, 'm_orderType': 'MKT'}
+        if longshort:
+            c_order['m_action'] = 'BUY'
+            s_order['m_action'] = 'SELL'
+            p_order['m_action'] = 'SELL'
+        else:
+            c_order['m_action'] = 'SELL'
+            s_order['m_action'] = 'BUY'
+            p_order['m_action'] = 'BUY'
+
+        self.c_order = Order(**c_order)
+        self.s_order = Order(**s_order)
+        self.p_order = Order(**p_order)
+
     def gen_order(self, qty, longshort=True):
         qty = int(qty)
         self.order = Order()
@@ -113,6 +136,37 @@ class Reversal():
         else: order_params['m_action'] = 'SELL'
         [setattr(self.order, m, order_params[m]) for m in dir(self.order)
             if m in order_params]
+
+    def place_separate_orders(self):
+        order_ids = [self.client.nextId]
+        self.client.m_client.placeOrder(self.client.nextId,
+                                        self.client.req_contracts[self.c_req][0],
+                                        self.c_order)
+        self.client.m_client.reqIds(1)
+        while order_ids[-1] == self.client.nextId: 
+            print 'waiting for nextid'
+            sleep(.025)
+            self.client.m_client.reqIds(1)
+
+        order_ids.append(self.client.nextId)
+        self.client.m_client.placeOrder(self.client.nextId,
+                                        self.client.req_contracts[self.s_req][0],
+                                        self.s_order)
+        self.client.m_client.reqIds(1)
+        while order_ids[-1] == self.client.nextId: 
+            print 'waiting for nextid'
+            sleep(.025)
+            self.client.m_client.reqIds(1)
+
+        order_ids.append(self.client.nextId)
+        self.client.m_client.placeOrder(self.client.nextId,
+                                        self.client.req_contracts[self.p_req][0],
+                                        self.p_order)
+        self.client.m_client.reqIds(1)
+        while order_ids[-1] == self.client.nextId: 
+            sleep(.02)
+            self.client.m_client.reqIds(1)
+        return order_ids
 
     def place_order(self):
         self.client.m_client.placeOrder(self.client.nextId, 
