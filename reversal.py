@@ -2,11 +2,14 @@
 from time import sleep
 from decimal import Decimal
 import java.util.Vector as Vector
+import logging
 import sys
 
 from com.ib.client import ComboLeg, Contract, Order
 
 from ib.client import Client
+
+logger = logging.getLogger('ib.client')
 
 class Reversal():
     action_base = {'m_exchange': 'SMART', 'm_openClose': 0, 
@@ -42,13 +45,13 @@ class Reversal():
         else:
             errmsg = 'Not all legs exist for ticker %s expiry %s strike %s'
             errmsg = errmsg % (ticker, expiry, str(strike))
-            self.client.logger.error('%s %s %s' % ('*'*3, errmsg, '*'*3))
+            logger.error('%s %s %s' % ('*'*3, errmsg, '*'*3))
             return False
 
     def request_contract_ids(self, ticker, expiry, strike):
         if len(expiry) != 6:
             msg = 'Expiry format should be YYMMDD, not %s' % str(expiry)
-            self.client.logger.fatal(msg)
+            logger.fatal(msg)
             raise Exception(msg)
         ticker = ticker.upper().strip()
         strike = Decimal(str(strike))*1000
@@ -78,13 +81,13 @@ class Reversal():
             if count % 10 == 0: 
                 msg = 'On iteration %i for requests %i, %i, %i'
                 msgdata = (count, self.c_req, self.s_req, self.p_req)
-                self.client.logger.debug(msg, *msgdata)
+                logger.debug(msg, *msgdata)
             sleep(.1)
             all_requests = (self.client.req_contracts.keys()
                             + self.client.failed_contracts.keys())
         msg = 'Took %0.1f seconds to get contract info for requests %i, %i, %i'
         msgdata = (count*0.1, self.c_req, self.s_req, self.p_req)
-        self.client.logger.debug(msg, *msgdata)
+        logger.debug(msg, *msgdata)
         if (self.c_req 
          or self.s_req 
          or self.p_req) in self.client.failed_contracts: return False
@@ -112,6 +115,7 @@ class Reversal():
             for m in dir(self.combo_contract) if m in combo_params]
 
     def gen_separate_orders(self, qty=1, longshort=True):
+        qty = int(qty)
         c_order = {'m_totalQuantity': 1*qty, 'm_orderType': 'MKT'}
         s_order = {'m_totalQuantity': 100*qty, 'm_orderType': 'MKT'}
         p_order = {'m_totalQuantity': 1*qty, 'm_orderType': 'MKT'}
@@ -144,7 +148,7 @@ class Reversal():
                                         self.c_order)
         self.client.m_client.reqIds(1)
         while order_ids[-1] == self.client.nextId: 
-            print 'waiting for nextid'
+            logger.debug('order %i still processing', order_ids[-1])
             sleep(.025)
             self.client.m_client.reqIds(1)
 
@@ -154,7 +158,7 @@ class Reversal():
                                         self.s_order)
         self.client.m_client.reqIds(1)
         while order_ids[-1] == self.client.nextId: 
-            print 'waiting for nextid'
+            logger.debug('order %i still processing', order_ids[-1])
             sleep(.025)
             self.client.m_client.reqIds(1)
 
