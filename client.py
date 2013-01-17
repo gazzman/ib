@@ -344,6 +344,8 @@ class Client(CallbackBase, EWrapper):
 
     def cancel_realtime_bars(self, req_id):
         self.m_client.cancelRealTimeBars(req_id)
+        del self.realtime_bars[req_id]
+        self.logger.info('Realtime bars canceled for req_id %i', req_id)
 
     def cancel_all_realtime_bars(self):
         [self.cancel_realtime_bars(x) for x in self.realtime_bars]
