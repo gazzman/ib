@@ -141,6 +141,7 @@ class ReversalAnalyzer(Client, Callback):
                        'm_currency': 'USD', 'm_exchange': 'SMART'}
             o_req = self.request_contract(options)
             while (s_req and o_req) not in self.fulfilled_con_reqs: sleep(.5)
+            sleep(5) # Sleep to avoid pacing violations
 
             # Create the reversal ids and populate data map
             expirys = [self.m_to_expiry(x.m_expiry) 
