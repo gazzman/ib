@@ -348,7 +348,8 @@ class Client(CallbackBase, EWrapper):
         self.logger.info('Realtime bars canceled for req_id %i', req_id)
 
     def cancel_all_realtime_bars(self):
-        [self.cancel_realtime_bars(x) for x in self.realtime_bars]
+        bar_ids = self.realtime_bars.keys()
+        [self.cancel_realtime_bars(x) for x in bar_ids]
 
     def request_fundamentals(self, contract, report_type):
         self.req_id += 1
