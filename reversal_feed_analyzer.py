@@ -77,6 +77,8 @@ class ReversalAnalyzer(Client, Callback):
     req_to_rev = dict()
     rev_to_data = dict()
     stk_opt_pairs = dict()
+    long_reversals = dict()
+    short_reversals = dict()
     
     def __init__(self, rev_server_host, rev_server_port, client_id=70,
                  threshold=-0.04):
@@ -153,12 +155,15 @@ class ReversalAnalyzer(Client, Callback):
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
         strikes = [x.m_strike
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
-        self.long_reversals = [(symbol, x, y, self.symbols[symbol]['qty'], 
-                                'long') for x in expirys for y in strikes]
-        self.short_reversals = [(symbol, x, y, self.symbols[symbol]['qty'], 
-                                 'short') for x in expirys for y in strikes]
-        for x in self.long_reversals + self.short_reversals: 
-            self.rev_to_data[x] = [(None,None), (None,None), (None,None)]
+        self.long_reversals[symbol] = [(x, y, self.symbols[symbol]['qty'], 
+                                        'long') for x in expirys
+                                                for y in strikes]
+        self.short_reversals[symbol] = [(x, y, self.symbols[symbol]['qty'], 
+                                         'short') for x in expirys 
+                                                  for y in strikes]
+        for x in self.long_reversals[symbol] + self.short_reversals[symbol]:
+            rev_id = (symbol,) + x 
+            self.rev_to_data[rev_id] = [(None,None), (None,None), (None,None)]
         return self.rev_to_data
 
     def start_analyzing_reversal(self, symbol):
@@ -172,8 +177,10 @@ class ReversalAnalyzer(Client, Callback):
                                             show='ASK')
         self.logger.debug(self.rtbars_stk_msg, symbol)
         these_bar_ids += [s_bid_id, s_ask_id]
-        self.req_to_rev[s_bid_id] = [(x, 1) for x in self.long_reversals]
-        self.req_to_rev[s_ask_id] = [(x, 1) for x in self.short_reversals]
+        self.req_to_rev[s_bid_id] = [((symbol,) + x, 1) 
+                                     for x in self.long_reversals[symbol]]
+        self.req_to_rev[s_ask_id] = [((symbol,) + x, 1) 
+                                     for x in self.short_reversals[symbol]]
         for opt_con in self.req_contracts[self.stk_opt_pairs[symbol][1]]:
             expiry = self.m_to_expiry(opt_con.m_expiry)
             strike = opt_con.m_strike
