@@ -1,4 +1,5 @@
 #!/usr/local/bin/jython
+from calendar import Calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
 from time import sleep  
@@ -127,8 +128,11 @@ class ReversalAnalyzer(Client, Callback):
         return '%s,%s,%f,%i,%s' % (symbol, expiry, strike, qty, longshort)
 
     def m_to_expiry(self, m_expiry):
+        c = Calendar()
         expiry = datetime.strptime(m_expiry, '%Y%m%d')
-        expiry += timedelta(days=1)
+        mdc = c.monthdatescalendar(expiry.year, expiry.month)
+        fridays = [x[4] for x in mdc if x[4].month == expiry.month]
+        if fridays[2] == expiry.date(): expiry += timedelta(days=1)        
         return expiry.strftime('%y%m%d')
 
     def gather_contracts(self, symbols, max_dte=30):
