@@ -62,7 +62,7 @@ class Callback(CallbackBase):
             times = [x[1] for x in data]
             if times[0] == times[1] == times[2]: 
                 prices = [x[0] for x in data]
-                self.evaluate_reversal(rev_id, prices)
+                self.evaluate_and_enter_reversal(rev_id, prices)
 
         msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
                                                close, volume, wap, count)
@@ -97,7 +97,7 @@ class ReversalAnalyzer(Client, Callback):
         sock.sendall(message + '\n')
         sock.close()
 
-    def evaluate_reversal(self, rev_id, prices):
+    def evaluate_and_enter_reversal(self, rev_id, prices):
         ticker, expiry, strike, qty, longshort = rev_id
         strike = Decimal(str(strike))
         call, stock, put = [Decimal(str(x)) for x in prices]
@@ -105,7 +105,7 @@ class ReversalAnalyzer(Client, Callback):
         if (longshort == 'long'):
             self.logger.debug(self.eval_msg, rev_id, call, strike, stock, put, 
                               longshort, result)
-            if strike < stock and result < self.threshold:
+            if strike < (stock + put) and result < self.threshold:
                 message = self.gen_trade(ticker, expiry, strike, qty, 
                                          longshort, result)
                 self.send_message(message)
