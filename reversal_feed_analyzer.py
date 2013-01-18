@@ -20,6 +20,7 @@ class Callback(CallbackBase):
     mon_stk_msg = 'Monitoring STK contract %i: %-6s'
     opt_id = '%-6s%s%s%08i'
     rtbars_opt_msg = ' '.join(['Starting realtime bars for', opt_id])
+    rtbars_stk_msg = 'Starting realtime bars for %s'
     mon_opt_msg = ' '.join(['Monitoring OPT contract %i:', opt_id])
     eval_msg = 'Evaluating %s: '
     eval_msg += 'call %0.3f, strike %0.3f, stock %0.3f, put %0.3f, %s %0.3f'
@@ -150,7 +151,7 @@ class ReversalAnalyzer(Client, Callback):
     def gen_reversal_ids(self, symbol):
         expirys = [self.m_to_expiry(x.m_expiry) 
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
-        strikes = [str(x.m_strike) 
+        strikes = [x.m_strike
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
         self.long_reversals = [(symbol, x, y, self.symbols[symbol]['qty'], 
                                 'long') for x in expirys for y in strikes]
@@ -169,6 +170,7 @@ class ReversalAnalyzer(Client, Callback):
         s_ask_id = self.start_realtime_bars(self.req_contracts[\
                                             self.stk_opt_pairs[symbol][0]][0], 
                                             show='ASK')
+        self.logger.debug(self.rtbars_stk_msg, symbol)
         these_bar_ids += [s_bid_id, s_ask_id]
         self.req_to_rev[s_bid_id] = [(x, 1) for x in self.long_reversals]
         self.req_to_rev[s_ask_id] = [(x, 1) for x in self.short_reversals]
