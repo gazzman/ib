@@ -160,7 +160,7 @@ class ReversalAnalyzer(Client, Callback):
             self.rev_to_data[x] = [(None,None), (None,None), (None,None)]
         return self.rev_to_data
 
-    def start_analyzing_reversal(self, symbol, qty=1):
+    def start_analyzing_reversal(self, symbol):
         these_bar_ids = []
         # Start the realtime bars and generate the id maps
         s_bid_id = self.start_realtime_bars(self.req_contracts[\
