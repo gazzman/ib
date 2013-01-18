@@ -112,7 +112,7 @@ class ReversalAnalyzer(Client, Callback):
                 message = self.gen_trade(ticker, expiry, strike, qty, 
                                          longshort, result)
                 self.send_message(message)
-                self.logger.info(enter_msg, message, result)
+                self.logger.info(self.enter_msg, message, result)
         elif (longshort == 'short'):
             result *= -1
             self.logger.debug(self.eval_msg, rev_id, call, strike, stock, put, 
@@ -121,7 +121,7 @@ class ReversalAnalyzer(Client, Callback):
                 message = self.gen_trade(ticker, expiry, strike, qty, 
                                          longshort, result)
                 self.send_message(message)
-                self.logger.info(enter_msg, message, result)
+                self.logger.info(self.enter_msg, message, result)
 
     def gen_trade(self, symbol, expiry, strike, qty, longshort, limit):
         return '%s,%s,%f,%i,%s' % (symbol, expiry, strike, qty, longshort)
