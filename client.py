@@ -9,13 +9,14 @@ import sys
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 from com.ib.client import Contract, ExecutionFilter
 
-from ib.contractkeys import Stock, Option, OptionLocal, ContractId
+from ib.contractkeys import ContractId, Currency, Option, OptionLocal, Stock
 
 LOGLEVEL = logging.DEBUG
 
 class CallbackBase():
     realtime_bars = dict()
     historical_data = dict()
+    mkt_data = dict()
     fundamentals = dict()
     satisfied_requests = dict()
     req_errs = dict()
@@ -25,10 +26,13 @@ class CallbackBase():
     fulfilled_contracts = dict()
     fulfilled_open_orders_req = dict()
     fulfilled_execution_req = dict()
+    fulfilled_tick_snapshots = dict()
     failed_contracts = dict()
     data_requests = dict()
     executions = dict()
+    mkt_data_requests = dict()
 
+    # Callback data handlers
     def error(self, *args):
         ''' We either get an (int, int, str), (Exception, ), or (str, )
         '''
@@ -66,41 +70,15 @@ class CallbackBase():
         f.close()
         self.logger.debug('Wrote datapoint for req_id %i to %s', req_id, fnm)
 
-    def tickPrice(self, tickerId, field, price, canAutoExecute):
-        msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
-                                             canAutoExecute)
-        self.msghandler('tickPrice: ' + msg)
+    def currentTime(self, time):
+        msg = EWrapperMsgGenerator.currentTime(time)
+        self.msghandler(msg)
 
-    def tickSize(self, tickerId, field, size):
-        msg = EWrapperMsgGenerator.tickSize(tickerId, field, size)
-        self.msghandler('tickSize: ' + msg)
-
-    def tickOptionComputation(self, tickerId, field, impliedVol, delta, 
-                              optPrice, pvDividend, gamma, vega, theta, 
-                              undPrice):
-        msg = EWrapperMsgGenerator.tickOptionComputation(tickerId, field, 
-                                                         impliedVol, delta, 
-                                                         optPrice, pvDividend, 
-                                                         gamma, vega, theta, 
-                                                         undPrice)
-        self.msghandler('tickOptComp: ' + msg)
-
-    def tickGeneric(self, tickerId, tickType, value):
-        msg = EWrapperMsgGenerator.tickGeneric(tickerId, tickType, value)
-        self.msghandler('tickGen: ' + msg)
-
-    def tickString(self, tickerId, tickType, value):
-        msg = EWrapperMsgGenerator.tickString(tickerID, tickType, value)
-        self.msghandler('tickString: ' + msg)
-
-    def tickEFP(self, tickerId, tickType, basisPoints, formattedBasisPoints, 
-                impliedFuture, holdDays, futureExpiry, dividendImpact, 
-                dividendsToExpiry):
-        msg = EWrapperMsgGenerator.tickEFP(tickerId, tickType, basisPoints, 
-                                           formattedBasisPoints, impliedFuture, 
-                                           holdDays, futureExpiry, 
-                                           dividendImpact, dividendsToExpiry) 
-        self.msghandler('tickEFP: ' + msg)
+    # Order callbacks
+    def nextValidId(self, orderId):
+        self.nextId = orderId
+        msg = EWrapperMsgGenerator.nextValidId(orderId)
+        self.logger.info('nextValidID: ' + msg)
 
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice, 
                     permId, parentId, lastFillPrice, clientId, whyHeld):
@@ -136,6 +114,7 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.openOrderEnd()
         self.msghandler(msg)
 
+    # Account callbacks
     def updateAccountValue(self, key, value, currency, accountName):
         msg = EWrapperMsgGenerator.updateAccountValue(key, value, currency, 
                                                       accountName)
@@ -157,11 +136,15 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.accountDownloadEnd(accountName)
         self.msghandler('acctDLEnd: ' + msg)
 
-    def nextValidId(self, orderId):
-        self.nextId = orderId
-        msg = EWrapperMsgGenerator.nextValidId(orderId)
-        self.logger.info('nextValidID: ' + msg)
+    def managedAccounts(self, accountsList):
+        msg = EWrapperMsgGenerator.managedAccounts(accountsList)
+        self.logger.info(msg)
 
+    def receiveFA(self, faDataType, xml):
+        msg = EWrapperMsgGenerator.receiveFA(faDataType, xml)
+        self.msghandler('receiveFA: ' + msg)
+
+    # Contract callbacks
     def contractDetails(self, reqId, contractDetails):
         if reqId not in self.req_cds:  self.req_cds[reqId] = list()
         self.req_cds[reqId].append(contractDetails)
@@ -186,6 +169,7 @@ class CallbackBase():
         self.fulfilled_contracts[reqId] = datetime.now()
         self.msghandler(msg)
 
+    # Execution callbacks
     def execDetails(self, reqId, contract, execution):
         msg = EWrapperMsgGenerator.execDetails(reqId, contract, execution)
         self.executions[execution.m_execId] = (reqId, contract, execution)
@@ -203,6 +187,7 @@ class CallbackBase():
         self.fulfilled_execution_req[reqId] = datetime.now()
         self.msghandler(msg, req_id=reqId)
 
+    # Data callbacks
     def updateMktDepth(self, tickerId, position, operation, side, price, size):
         msg = EWrapperMsgGenerator.updateMktDepth(tickerId, position, 
                                                   operation, side, price, size)
@@ -220,23 +205,27 @@ class CallbackBase():
                                                       origExchange)
         self.msghandler('updateNewsBull: ' + msg)
 
-    def managedAccounts(self, accountsList):
-        msg = EWrapperMsgGenerator.managedAccounts(accountsList)
-        self.logger.info(msg)
-
-    def receiveFA(self, faDataType, xml):
-        msg = EWrapperMsgGenerator.receiveFA(faDataType, xml)
-        self.msghandler('receiveFA: ' + msg)
-
     def historicalData(self, reqId, date, open_, high, low, close, volume, 
                        count, WAP, hasGaps):
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        fnm = '%i_%s_HD.csv' % (self.historical_data[reqId]['contract'].m_conId,
-                             self.historical_data[reqId]['show'])
+        fnm = '%i_%s_HD.csv' % self.historical_data[reqId]
         self.datahandler(fnm, reqId, msg)
 
+    def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
+                    count):
+        msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
+                                               close, volume, wap, count)
+        fnm = '%i_%s_RTD.csv' % self.realtime_bars[reqId]
+        self.datahandler(fnm, reqId, msg)
+
+    def fundamentalData(self, reqId, data):
+        msg = EWrapperMsgGenerator.fundamentalData(reqId, data)
+        fnm = '%i_%s_FD.csv' % self.fundamentals[req_id]
+        self.datahandler(fnm, req_id, msg)
+
+    # Scanner callbacks
     def scannerParameters(self, xml):
         msg = EWrapperMsgGenerator.scannerParameters(xml)
         self.msghandler('scannerParams: ' + msg)
@@ -252,23 +241,48 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.scannerDataEnd(reqId)
         self.msghandler('scannerDataEnd: ' + msg, req_id=reqId)
 
-    def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
-                    count):
-        msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
-                                               close, volume, wap, count)
-        fnm = '%i_%s_RTD.csv' % (self.realtime_bars[reqId]['contract'].m_conId,
-                             self.realtime_bars[reqId]['show'])
-        self.datahandler(fnm, reqId, msg)
-
-    def currentTime(self, time):
-        msg = EWrapperMsgGenerator.currentTime(time)
+    # Market data Tick callbacks
+    def tickPrice(self, tickerId, field, price, canAutoExecute):
+        msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
+                                             canAutoExecute)
+        fnm = '%i_%s_TP.csv' % self.mkt_data[tickerId]
         self.msghandler(msg)
+        msg = '%s %s' % (datetime.now().isoformat(), msg)
+        self.datahandler(fnm, tickerId, msg)
 
-    def fundamentalData(self, reqId, data):
-        msg = EWrapperMsgGenerator.fundamentalData(reqId, data)
-        fnm = '%i_%s_FD.csv' % (self.fundamentals[req_id]['contract'].m_conId,
-                             self.fundamentals[req_id]['show'])
-        self.datahandler(fnm, req_id, msg)
+    def tickSize(self, tickerId, field, size):
+        msg = EWrapperMsgGenerator.tickSize(tickerId, field, size)
+        fnm = '%i_%s_TS.csv' % self.mkt_data[tickerId]
+        self.msghandler(msg)
+        msg = '%s %s' % (datetime.now().isoformat(), msg)
+        self.datahandler(fnm, tickerId, msg)
+
+    def tickOptionComputation(self, tickerId, field, impliedVol, delta, 
+                              optPrice, pvDividend, gamma, vega, theta, 
+                              undPrice):
+        msg = EWrapperMsgGenerator.tickOptionComputation(tickerId, field, 
+                                                         impliedVol, delta, 
+                                                         optPrice, pvDividend, 
+                                                         gamma, vega, theta, 
+                                                         undPrice)
+        self.msghandler('tickOptComp: ' + msg)
+
+    def tickGeneric(self, tickerId, tickType, value):
+        msg = EWrapperMsgGenerator.tickGeneric(tickerId, tickType, value)
+        self.msghandler('tickGen: ' + msg)
+
+    def tickString(self, tickerId, tickType, value):
+        msg = EWrapperMsgGenerator.tickString(tickerID, tickType, value)
+        self.msghandler('tickString: ' + msg)
+
+    def tickEFP(self, tickerId, tickType, basisPoints, formattedBasisPoints, 
+                impliedFuture, holdDays, futureExpiry, dividendImpact, 
+                dividendsToExpiry):
+        msg = EWrapperMsgGenerator.tickEFP(tickerId, tickType, basisPoints, 
+                                           formattedBasisPoints, impliedFuture, 
+                                           holdDays, futureExpiry, 
+                                           dividendImpact, dividendsToExpiry) 
+        self.msghandler('tickEFP: ' + msg)
 
     def deltaNeutralValidation(self, reqId, underComp):
         msg = EWrapperMsgGenerator.deltaNeutralValidation(reqId, underComp)
@@ -276,7 +290,8 @@ class CallbackBase():
 
     def tickSnapshotEnd(self, tickerId):
         msg = EWrapperMsgGenerator.tickSnapshotEnd(tickerId)
-        self.msghandler('tickSnapShotEnd: ' + msg)
+        self.fulfilled_tick_snapshots[tickerId] = datetime.now()
+        self.msghandler(msg)
 
     def marketDataType(self, reqId, marketDataType):
         msg = EWrapperMsgGenerator.marketDataType(reqId, marketDataType)
@@ -287,6 +302,7 @@ class Client(CallbackBase, EWrapper):
     id_to_cd = dict()
     stk_base = {'m_secType': 'STK', 'm_exchange': 'SMART', 'm_currency': 'USD'}
     opt_base = {'m_secType': 'OPT', 'm_exchange': 'SMART', 'm_currency': 'USD'}
+    fx_base = {'m_secType': 'CASH'}
 
     def __init__(self, client_id=9):
         self.client_id = client_id
@@ -317,15 +333,18 @@ class Client(CallbackBase, EWrapper):
             args = key._asdict()
             if type(key) == Stock: 
                 args.update(self.stk_base)
-            elif type(key) == Option or OptionLocal: 
+            elif type(key) in (Option, OptionLocal): 
                 args.update(self.opt_base)
+            elif type(key) == Currency:
+                args.update(self.fx_base)
             elif type(key) == ContractId and key[0] in self.id_to_cd: 
                 return self.id_to_cd[key[0]]
             else:
-                valid_types = 'Stock, Option, OptionLocal, ContractId'
+                validtypes = 'Currency, ContractId, Option, OptionLocal, Stock'
                 errmsg = 'Valid arg types are %s; not %s'
-                raise TypeError(errmsg % (valid_types, str(type(key)))) 
+                raise TypeError(errmsg % (validtypes, str(type(key)))) 
             args = dict([(k, v) for (k, v) in args.items() if v])
+            print args
             contract = Contract(**args)
             self.req_id += 1
             self.m_client.reqContractDetails(self.req_id, contract)
@@ -336,6 +355,15 @@ class Client(CallbackBase, EWrapper):
         return self.cached_cds[key]
 
     # Request data methods
+    def request_mkt_data(self, contract, gtick_list='', snapshot=True):
+        if gtick_list != '': snapshot=False
+        elif snapshot: gtick_list = ''
+        self.req_id += 1
+        self.data_requests[self.req_id] = datetime.now()
+        self.mkt_data[self.req_id] = (contract.m_conId, gtick_list)
+        self.m_client.reqMktData(self.req_id, contract, gtick_list, snapshot)
+        return self.req_id
+
     def start_realtime_bars(self, contract, show='TRADES'):
         if self.too_many_requests(): return None
         self.req_id += 1
@@ -364,6 +392,12 @@ class Client(CallbackBase, EWrapper):
         return self.req_id
 
     # Cancel data methods
+    def cancel_mkt_data(self, req_id):
+        self.m_client.cancelMktData(req_id)
+        del self.mkt_data[req_id]
+        self.logger.info('Market data canceled for req_id %i', req_id)
+        return True
+
     def cancel_realtime_bars(self, req_id):
         self.m_client.cancelRealTimeBars(req_id)
         del self.realtime_bars[req_id]
@@ -383,6 +417,10 @@ class Client(CallbackBase, EWrapper):
         return True
 
     # Cancel all data methods
+    def cancel_all_mkt_data(self):
+        bar_ids = self.mkt_data.keys()
+        [self.cancel_mkt_data(x) for x in bar_ids]
+
     def cancel_all_realtime_bars(self):
         bar_ids = self.realtime_bars.keys()
         [self.cancel_realtime_bars(x) for x in bar_ids]
