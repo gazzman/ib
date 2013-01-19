@@ -9,7 +9,7 @@ import sys
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 from com.ib.client import Contract, ExecutionFilter
 
-from ib.ContractKeys import Stock, Option, OptionLocal, ContractId
+from ib.contractkeys import Stock, Option, OptionLocal, ContractId
 
 LOGLEVEL = logging.DEBUG
 
@@ -336,7 +336,7 @@ class Client(CallbackBase, EWrapper):
         return self.cached_cds[key]
 
     # Request data methods
-    def start_realtime_bars(self, contract, show):
+    def start_realtime_bars(self, contract, show='TRADES'):
         if self.too_many_requests(): return None
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
