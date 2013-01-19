@@ -1,5 +1,5 @@
 #!/usr/local/bin/jython
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import sleep
 from logging.handlers import TimedRotatingFileHandler
 import java.io.EOFException
@@ -7,19 +7,27 @@ import logging
 import sys
 
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
-from com.ib.client import Contract
+from com.ib.client import Contract, ExecutionFilter
+
+from ib.ContractKeys import Stock, Option, OptionLocal, ContractId
 
 LOGLEVEL = logging.DEBUG
 
 class CallbackBase():
-    hist_data = dict()
     realtime_bars = dict()
-    fundamental_data = dict()
+    historical_data = dict()
+    fundamentals = dict()
     satisfied_requests = dict()
     req_errs = dict()
-    req_contracts = dict()
-    failed_contracts = dict()
     orders = dict()
+
+    req_cds = dict()
+    fulfilled_contracts = dict()
+    fulfilled_open_orders_req = dict()
+    fulfilled_execution_req = dict()
+    failed_contracts = dict()
+    data_requests = dict()
+    executions = dict()
 
     def error(self, *args):
         ''' We either get an (int, int, str), (Exception, ), or (str, )
@@ -155,8 +163,8 @@ class CallbackBase():
         self.logger.info('nextValidID: ' + msg)
 
     def contractDetails(self, reqId, contractDetails):
-        if reqId not in self.req_contracts:  self.req_contracts[reqId] = list()
-        self.req_contracts[reqId].append(contractDetails.m_summary)
+        if reqId not in self.req_cds:  self.req_cds[reqId] = list()
+        self.req_cds[reqId].append(contractDetails)
 #        msg = EWrapperMsgGenerator.contractDetails(reqId, contractDetails)
         msg = 'reqId = %i received details for'
         msg = ' '.join([msg,  'con_id: %i symbol: %s, secType: %s'])
@@ -175,15 +183,25 @@ class CallbackBase():
 
     def contractDetailsEnd(self, reqId):
         msg = EWrapperMsgGenerator.contractDetailsEnd(reqId)
+        self.fulfilled_contracts[reqId] = datetime.now()
         self.msghandler(msg)
 
     def execDetails(self, reqId, contract, execution):
         msg = EWrapperMsgGenerator.execDetails(reqId, contract, execution)
-        self.msghandler('execDetails: ' + msg, req_id=reqId)
+        self.executions[execution.m_execId] = (reqId, contract, execution)
+        if execution.m_orderId == sys.maxint: oid = 0
+        else: oid = execution.m_orderId
+        msg = 'Client %2i executed oid %4i: %s %3i %5s %s at price %7.3f,'
+        msg += ' avgprice %7.3f'
+        msg_data = (execution.m_clientId, oid, execution.m_side,
+                    execution.m_cumQty, contract.m_symbol, contract.m_secType,
+                    execution.m_price, execution.m_avgPrice)
+        self.msghandler(msg % msg_data, req_id=reqId)
 
     def execDetailsEnd(self, reqId):
         msg = EWrapperMsgGenerator.execDetailsEnd(reqId)
-        self.msghandler('execDetEnd: ' + msg, req_id=reqId)
+        self.fulfilled_execution_req[reqId] = datetime.now()
+        self.msghandler(msg, req_id=reqId)
 
     def updateMktDepth(self, tickerId, position, operation, side, price, size):
         msg = EWrapperMsgGenerator.updateMktDepth(tickerId, position, 
@@ -215,8 +233,8 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        fnm = '%i_%s.csv' % (self.hist_data[reqId]['contract'].m_conId,
-                             self.hist_data[reqId]['show'])
+        fnm = '%i_%s_HD.csv' % (self.historical_data[reqId]['contract'].m_conId,
+                             self.historical_data[reqId]['show'])
         self.datahandler(fnm, reqId, msg)
 
     def scannerParameters(self, xml):
@@ -238,7 +256,7 @@ class CallbackBase():
                     count):
         msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
                                                close, volume, wap, count)
-        fnm = '%i_%s.csv' % (self.realtime_bars[reqId]['contract'].m_conId,
+        fnm = '%i_%s_RTD.csv' % (self.realtime_bars[reqId]['contract'].m_conId,
                              self.realtime_bars[reqId]['show'])
         self.datahandler(fnm, reqId, msg)
 
@@ -248,8 +266,8 @@ class CallbackBase():
 
     def fundamentalData(self, reqId, data):
         msg = EWrapperMsgGenerator.fundamentalData(reqId, data)
-        fnm = '%i_%s.csv' % (self.fundamental_data[req_id]['contract'].m_conId,
-                             self.fundamental_data[req_id]['show'])
+        fnm = '%i_%s_FD.csv' % (self.fundamentals[req_id]['contract'].m_conId,
+                             self.fundamentals[req_id]['show'])
         self.datahandler(fnm, req_id, msg)
 
     def deltaNeutralValidation(self, reqId, underComp):
@@ -265,6 +283,11 @@ class CallbackBase():
         self.msghandler('marketDataType: ' + msg, req_id=reqId)
 
 class Client(CallbackBase, EWrapper):
+    cached_cds = dict()
+    id_to_cd = dict()
+    stk_base = {'m_secType': 'STK', 'm_exchange': 'SMART', 'm_currency': 'USD'}
+    opt_base = {'m_secType': 'OPT', 'm_exchange': 'SMART', 'm_currency': 'USD'}
+
     def __init__(self, client_id=9):
         self.client_id = client_id
         self.init_logger()
@@ -289,6 +312,90 @@ class Client(CallbackBase, EWrapper):
         self.m_client.eDisconnect()
         self.logger.info('Client disconnected')
 
+    def request_contract_details(self, key):
+        if key not in self.cached_cds: 
+            args = key._asdict()
+            if type(key) == Stock: 
+                args.update(self.stk_base)
+            elif type(key) == Option or OptionLocal: 
+                args.update(self.opt_base)
+            elif type(key) == ContractId and key[0] in self.id_to_cd: 
+                return self.id_to_cd[key[0]]
+            else:
+                valid_types = 'Stock, Option, OptionLocal, ContractId'
+                errmsg = 'Valid arg types are %s; not %s'
+                raise TypeError(errmsg % (valid_types, str(type(key)))) 
+            args = dict([(k, v) for (k, v) in args.items() if v])
+            contract = Contract(**args)
+            self.req_id += 1
+            self.m_client.reqContractDetails(self.req_id, contract)
+            while self.req_id not in self.fulfilled_contracts: sleep(.5)
+            self.cached_cds[key] = self.req_cds[self.req_id]
+            for cd in self.req_cds[self.req_id]: 
+                self.id_to_cd[cd.m_summary.m_conId] = cd
+        return self.cached_cds[key]
+
+    # Request data methods
+    def start_realtime_bars(self, contract, show):
+        if self.too_many_requests(): return None
+        self.req_id += 1
+        self.data_requests[self.req_id] = datetime.now()
+        self.realtime_bars[self.req_id] = (contract.m_conId, show)
+        self.m_client.reqRealTimeBars(self.req_id, contract, 5, show, 0)
+        return self.req_id
+
+    def request_historical_data(self, contract, end_time=None, duration='1 D',
+                                bar_size='1 min', show='TRADES'):
+        if self.too_many_requests(): return None
+        if not end_time: end_time = datetime.now().strftime('%Y%m%d %H:%M:%S')
+        self.req_id += 1
+        self.data_requests[self.req_id] = datetime.now()
+        self.historical_data[self.req_id] = (contract.m_conId, show)
+        self.m_client.reqHistoricalData(self.req_id, contract, end_time,
+                                        duration, bar_size, show, 1, 1)
+        return self.req_id
+
+    def request_fundamentals(self, contract, report_type):
+        if self.too_many_requests(): return None
+        self.req_id += 1
+        self.data_requests[self.req_id] = datetime.now()
+        self.fundamentals[self.req_id] = (contract.m_conId, report_type)
+        self.m_client.reqFundamentalData(self.req_id, contract, report_type)
+        return self.req_id
+
+    # Cancel data methods
+    def cancel_realtime_bars(self, req_id):
+        self.m_client.cancelRealTimeBars(req_id)
+        del self.realtime_bars[req_id]
+        self.logger.info('Realtime bars canceled for req_id %i', req_id)
+        return True
+
+    def cancel_historical_data(self, req_id):
+        self.m_client.cancelHistoricalData(req_id)
+        del self.historical_data[req_id]
+        self.logger.info('Historical data canceled for req_id %i', req_id)
+        return True
+
+    def cancel_fundamentals(self, req_id):
+        self.m_client.cancelFundamentalData(req_id)
+        del self.fundamentals[req_id]
+        self.logger.info('Fundamentals canceled for req_id %i', req_id)
+        return True
+
+    # Cancel all data methods
+    def cancel_all_realtime_bars(self):
+        bar_ids = self.realtime_bars.keys()
+        [self.cancel_realtime_bars(x) for x in bar_ids]
+
+    def cancel_all_historical_data(self):
+        historical_ids = self.historical_data.keys()
+        [self.cancel_historical_data(x) for x in historical_ids]
+
+    def cancel_all_fundamentals(self):
+        fundamental_ids = self.fundamentals.keys()
+        [self.cancel_fundamentals(x) for x in fundamental_ids]
+
+    # Orders and Executions methods
     def request_open_orders(self):
         self.m_client.reqOpenOrders()        
 
@@ -297,70 +404,28 @@ class Client(CallbackBase, EWrapper):
 
     def cancel_order(self, order_id):
         self.m_client.cancelOrder(order_id)
+        del self.orders[self.client_id][order_id]
 
     def cancel_open_orders(self):
         self.request_open_orders()
         if self.client_id not in self.orders:
             self.logger.error('Client has no open orders')
         else:
-            [self.cancel_order(x) for x in self.orders[self.client_id] 
-                if self.orders[self.client_id][x]['status'].lower()
-                     != 'cancelled']
+            order_ids = self.orders[self.client_id].keys()
+            [self.cancel_order(x) for x in order_ids
+            if self.orders[self.client_id][x]['status'].lower() != 'cancelled']
 
-    def request_contract(self, key_dic):
-        contract = Contract()
-        [setattr(contract, m, key_dic[m]) for m in dir(contract)
-            if m in key_dic]
+    def request_executions(self, client_id=None, time=None, symbol=None,
+                           sec_type=None, side=None, exchange=None):
+        args = {'m_clientId': client_id, 'm_time': time, 'm_symbol': symbol,
+                'm_secType': sec_type, 'm_side': side, 'm_exchange': exchange}
+        args = dict([(k, v) for (k, v) in args.items() if v])
         self.req_id += 1
-        self.m_client.reqContractDetails(self.req_id, contract)
-        return self.req_id
+        self.m_client.reqExecutions(self.req_id, ExecutionFilter(**args))
 
-    def request_historical_data(self, contract, end_time=None, 
-                                duration='1 D', bar_size='1 min', 
-                                show='TRADES'):
-        if not end_time: end_time = datetime.now().strftime('%Y%m%d %H:%M:%S')
-        self.req_id += 1
-        self.hist_data[self.req_id] = {'contract': contract, 
-                                       'end_time': end_time,
-                                       'duration': duration,
-                                       'bar_size': bar_size,
-                                       'show': show}
-        self.m_client.reqHistoricalData(self.req_id, contract, end_time,
-                                        duration, bar_size, show, 1, 1)
-        return self.req_id
-
-    def cancel_historical_data(self, req_id):
-        self.m_client.cancelHistoricalData(req_id)
-
-    def cancel_all_historical_data(self):
-        [self.cancel_historical_data(x) for x in self.hist_data]
-
-    def start_realtime_bars(self, contract, show='TRADES'):
-        self.req_id += 1
-        self.realtime_bars[self.req_id] = {'contract': contract,
-                                           'show': show}
-        self.m_client.reqRealTimeBars(self.req_id, contract, 5, show, 0)
-        return self.req_id
-
-    def cancel_realtime_bars(self, req_id):
-        self.m_client.cancelRealTimeBars(req_id)
-        del self.realtime_bars[req_id]
-        self.logger.info('Realtime bars canceled for req_id %i', req_id)
-        return True
-
-    def cancel_all_realtime_bars(self):
-        bar_ids = self.realtime_bars.keys()
-        [self.cancel_realtime_bars(x) for x in bar_ids]
-
-    def request_fundamentals(self, contract, report_type):
-        self.req_id += 1
-        self.fundamental_data[self.req_id] = {'contract': contract,
-                                              'report_type': report_type}
-        self.m_client.reqFundamentalData(self.req_id, contract, report_type)
-        return self.req_id
-
-    def cancel_fundamentals(self, req_id):
-        self.m_client.cancelFundamentalData(req_id)
-
-    def cancel_all_fundamentals(self):
-        [self.cancel_fundamentals(x) for x in self.fundamental_data]
+    # Helper methods
+    def too_many_requests(self):
+        since = datetime.now() - timedelta(seconds=600)
+        count =len([x for x in self.data_requests.values() if x > since])
+        if count >= 60: return True
+        else: return False
