@@ -1,7 +1,8 @@
 #!/usr/local/bin/jython
 from collections import namedtuple
 
-Stock = namedtuple('Stock', ['m_symbol'])
+ContractId = namedtuple('ContractId', ['m_conId'])
+Currency = namedtuple('Currency', ['m_localSymbol'])
 Option = namedtuple('Option', ['m_symbol', 'm_expiry', 'm_right', 'm_strike'])
 OptionLocal = namedtuple('OptionLocal', ['m_localSymbol'])
-ContractId = namedtuple('ContractId', ['m_conId'])
+Stock = namedtuple('Stock', ['m_symbol'])
