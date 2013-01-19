@@ -73,9 +73,9 @@ class Box(OrderGen):
         if call2_con.m_strike != put2_con.m_strike: 
             raise Exception("Synthetic2 strikes don't match")
 
-class Butterfly(OrderGen)
+class Butterfly(OrderGen):
     def __init__(self, lwing_id,  body_id,  rwing_id):
-        self.lwing_id, self.rwing_id = (lwing_id, rwing_id)) 
+        self.lwing_id, self.rwing_id = (lwing_id, rwing_id)
         self.body_id = body_id
         self.contract = self.gen_contract()
 
@@ -174,28 +174,16 @@ class CalendarSpread(OrderGen):
             raise Exception("Underlyings don't match")
 
 class Conversion(OrderGen):
-    pass
-
-class DeltaNeutral(OrderGen):
-    pass
-
-class DiagonalSpread(OrderGen):
-    pass
-
-class IronCorridor(OrderGen):
-    pass
-
-class Reversal(OrderGen):
     def __init__(self, call_id, stock_id, put_id):
         self.call_id, self.stock_id, self.put_id = (call_id, stock_id, put_id) 
         self.contract = self.gen_contract()
 
     def gen_contract(self):
-        call = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        call = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'SELL'}
         call.update(LEG_BASE)
-        stock = {'m_conId': self.stock_id, 'm_ratio': 100, 'm_action': 'SELL'}
+        stock = {'m_conId': self.stock_id, 'm_ratio': 100, 'm_action': 'BUY'}
         stock.update(LEG_BASE)
-        put = {'m_conId': self.put_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        put = {'m_conId': self.put_id, 'm_ratio': 1, 'm_action': 'BUY'}
         put.update(LEG_BASE)
 
         legs = Vector()
@@ -227,6 +215,59 @@ class Reversal(OrderGen):
             raise Exception("Call is on wrong underlying, or wrong Stock")
         if put_con.m_symbol != stock_con.m_symbol:
             raise Exception("Put is on wrong underlying, or wrong Stock")
+
+class DeltaNeutral(OrderGen):
+    def __init__(self, opt_id, stk_id, delta):
+        self.opt_id, self.stk_id, self.delta = (opt_id, stk_id, delta) 
+        self.contract = self.gen_contract()
+
+    def gen_contract(self):
+        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt.update(LEG_BASE)
+        stk = {'m_conId': self.stk_id, 'm_ratio': self.delta, 'm_action': 'SELL'}
+        stk.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**opt))
+        legs.add(ComboLeg(**stk))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
+
+    def is_sane(self, client):
+        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+        opt_con = opt_cd.m_summary
+        stk_con = stk_cd.m_summary
+        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+        if opt_con.m_symbol != stk_con.m_symbol:
+            raise Exception("Option is on wrong underlying, or wrong Stock")
+
+class DiagonalSpread(OrderGen):
+    pass
+
+class IronCorridor(OrderGen):
+    pass
+
+class Reversal(Conversion):
+    def gen_contract(self):
+        call = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        call.update(LEG_BASE)
+        stock = {'m_conId': self.stock_id, 'm_ratio': 100, 'm_action': 'SELL'}
+        stock.update(LEG_BASE)
+        put = {'m_conId': self.put_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        put.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**call))
+        legs.add(ComboLeg(**stock))
+        legs.add(ComboLeg(**put))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
 
 class RiskReversal(OrderGen):
     pass
