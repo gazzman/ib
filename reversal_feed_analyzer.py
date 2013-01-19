@@ -8,7 +8,7 @@ import socket
 import sys
 
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
-from com.ib.client import Contract
+from com.ib.client import ComboLeg, Contract
 
 from ib.client import Client, CallbackBase
 import ib.client
@@ -36,8 +36,8 @@ class Callback(CallbackBase):
         elif c.m_secType == 'OPT':
             expiry = datetime.strptime(c.m_expiry, '%Y%m%d')
             strike = Decimal(str(c.m_strike))
-            low = self.symbols[c.m_symbol]['low']
-            hi = self.symbols[c.m_symbol]['hi']
+            low = Decimal(str(self.symbols[c.m_symbol]['low']))
+            hi = Decimal(str(self.symbols[c.m_symbol]['hi']))
             dte = (expiry - datetime.now()).days
             if dte <= self.max_dte and low <= strike <= hi:
                 self.logger.debug(self.mon_opt_msg, c.m_conId, c.m_symbol, 
@@ -102,7 +102,7 @@ class ReversalAnalyzer(Client, Callback):
         sock.close()
 
     def evaluate_and_enter_reversal(self, rev_id, prices):
-        ticker, expiry, strike, qty, longshort = rev_id
+        symbol, expiry, strike, qty, longshort = rev_id
         strike = Decimal(str(strike))
         call, stock, put = [Decimal(str(x)) for x in prices]
         result = call + strike - stock - put
@@ -110,7 +110,7 @@ class ReversalAnalyzer(Client, Callback):
             self.logger.debug(self.eval_msg, rev_id, call, strike, stock, put, 
                               longshort, result)
             if strike < (stock + put) and result < self.threshold:
-                message = self.gen_trade(ticker, expiry, strike, qty, 
+                message = self.gen_trade(symbol, expiry, strike, qty, 
                                          longshort, result)
                 self.send_message(message)
                 self.logger.info(self.enter_msg, message, result)
@@ -119,7 +119,7 @@ class ReversalAnalyzer(Client, Callback):
             self.logger.debug(self.eval_msg, rev_id, call, strike, stock, put, 
                               longshort, result)
             if result < self.threshold:
-                message = self.gen_trade(ticker, expiry, strike, qty, 
+                message = self.gen_trade(symbol, expiry, strike, qty, 
                                          longshort, result)
                 self.send_message(message)
                 self.logger.info(self.enter_msg, message, result)
@@ -139,8 +139,8 @@ class ReversalAnalyzer(Client, Callback):
         self.max_dte = max_dte
         if type(symbols) == list:
             self.symbols = dict()
-            for x in symbols: self.symbols[x] = {'qty': 1, 'low': Decimal('0'),
-                                                'hi': Decimal(str(sys.maxint))}
+            for x in symbols: self.symbols[x] = {'dividend': None,
+                                                 'low': 0, 'hi': sys.maxint}
         else: self.symbols = symbols
         for symbol in self.symbols:
             # Get the contracts
@@ -155,16 +155,14 @@ class ReversalAnalyzer(Client, Callback):
         return self.stk_opt_pairs
 
     def gen_reversal_ids(self, symbol):
-        expirys = [self.m_to_expiry(x.m_expiry) 
+        expirys = [x.m_expiry
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
         strikes = [x.m_strike
                    for x in self.req_contracts[self.stk_opt_pairs[symbol][1]]]
-        self.long_reversals[symbol] = [(x, y, self.symbols[symbol]['qty'], 
-                                        'long') for x in expirys
-                                                for y in strikes]
-        self.short_reversals[symbol] = [(x, y, self.symbols[symbol]['qty'], 
-                                         'short') for x in expirys 
-                                                  for y in strikes]
+        self.long_reversals[symbol] = [(x, y, 'long') for x in expirys
+                                                      for y in strikes]
+        self.short_reversals[symbol] = [(x, y, 'short') for x in expirys 
+                                                        for y in strikes]
         for x in self.long_reversals[symbol] + self.short_reversals[symbol]:
             rev_id = (symbol,) + x 
             self.rev_to_data[rev_id] = [(None,None), (None,None), (None,None)]
@@ -186,25 +184,16 @@ class ReversalAnalyzer(Client, Callback):
         self.req_to_rev[s_ask_id] = [((symbol,) + x, 1) 
                                      for x in self.short_reversals[symbol]]
         for opt_con in self.req_contracts[self.stk_opt_pairs[symbol][1]]:
-            expiry = self.m_to_expiry(opt_con.m_expiry)
-            strike = opt_con.m_strike
-            self.logger.debug(self.rtbars_opt_msg, symbol, expiry,
-                              opt_con.m_right, Decimal(str(strike))*1000)
+            rev_id = (symbol, opt_con.m_expiry, opt_con.m_strike)
+            self.logger.debug(self.rtbars_opt_msg, symbol, opt_con.m_expiry,
+                              opt_con.m_right, opt_con.m_strike)
             opt_bid_id = self.start_realtime_bars(opt_con, show='BID')
             opt_ask_id = self.start_realtime_bars(opt_con, show='ASK')
             these_bar_ids += [opt_bid_id, opt_ask_id]
             if opt_con.m_right == 'C':
-                self.req_to_rev[opt_bid_id] = [((symbol, expiry, strike, 
-                                                self.symbols[symbol]['qty'],
-                                                'short'), 0)]
-                self.req_to_rev[opt_ask_id] = [((symbol, expiry, strike, 
-                                                self.symbols[symbol]['qty'],
-                                                'long'), 0)]
+                self.req_to_rev[opt_bid_id] = [(rev_id + ('short',)), 0)]
+                self.req_to_rev[opt_ask_id] = [(rev_id + ('long',)), 0)]
             elif opt_con.m_right == 'P':
-                self.req_to_rev[opt_bid_id] = [((symbol, expiry, strike, 
-                                                self.symbols[symbol]['qty'],
-                                                'long'), 2)]
-                self.req_to_rev[opt_ask_id] = [((symbol, expiry, strike, 
-                                                self.symbols[symbol]['qty'],
-                                                'short'), 2)]
+                self.req_to_rev[opt_bid_id] = [(rev_id + ('long',)), 2)]
+                self.req_to_rev[opt_ask_id] = [(rev_id + ('short',)), 2)]
         return these_bar_ids
