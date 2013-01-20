@@ -4,6 +4,7 @@ from time import sleep
 from logging.handlers import TimedRotatingFileHandler
 import java.io.EOFException
 import logging
+import pickle
 import sys
 
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
@@ -309,6 +310,12 @@ class Client(CallbackBase, EWrapper):
         self.init_logger()
         self.req_id = 0
         self.m_client = EClientSocket(self)
+        try:
+            self.tick_types = pickle.load(open('tick_types.pkl', 'r'))
+        except IOError:
+            msg = 'ticker_types.pkl not found. Continuing without tick descriptions.'
+            self.tick_types = None
+            self.logger.exception(msg)
 
     def init_logger(self):
         cid = '%2i' % self.client_id
@@ -344,7 +351,6 @@ class Client(CallbackBase, EWrapper):
                 errmsg = 'Valid arg types are %s; not %s'
                 raise TypeError(errmsg % (validtypes, str(type(key)))) 
             args = dict([(k, v) for (k, v) in args.items() if v])
-            print args
             contract = Contract(**args)
             self.req_id += 1
             self.m_client.reqContractDetails(self.req_id, contract)
@@ -434,6 +440,15 @@ class Client(CallbackBase, EWrapper):
         [self.cancel_fundamentals(x) for x in fundamental_ids]
 
     # Orders and Executions methods
+    def place_order(self, contract, order):
+        order_id = self.nextId
+        self.m_client.placeOrder(self.nextId, contract, order)
+        self.m_client.reqIds(1)
+        while order_id == self.nextId: 
+            self.logger.debug('Waiting for next order id')
+            sleep(.1)
+        return order_id
+
     def request_open_orders(self):
         self.m_client.reqOpenOrders()        
 
