@@ -11,6 +11,7 @@ from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 from com.ib.client import Contract, ExecutionFilter
 
 from ib.contractkeys import ContractId, Currency, Option, OptionLocal, Stock
+from ib.tick_types import tick_types
 
 LOGLEVEL = logging.DEBUG
 
@@ -310,12 +311,9 @@ class Client(CallbackBase, EWrapper):
         self.init_logger()
         self.req_id = 0
         self.m_client = EClientSocket(self)
-        try:
-            self.tick_types = pickle.load(open('tick_types.pkl', 'r'))
-        except IOError:
-            msg = 'ticker_types.pkl not found. Continuing without tick descriptions.'
-            self.tick_types = None
-            self.logger.exception(msg)
+        tt = [x.strip() for x in tick_types.split('\n') if x.strip() != '']
+        tt = [x.split(',') for x in tt]
+        self.tick_types = dict([(int(x[0]), x[1]) for x in tt])
 
     def init_logger(self):
         cid = '%2i' % self.client_id
