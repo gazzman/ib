@@ -10,6 +10,7 @@ LEG_BASE = {'m_exchange': 'SMART', 'm_openClose': 0,
 COMBO_BASE = {'m_symbol': 'USD', 'm_secType': 'BAG', 'm_exchange': 'SMART',
                 'm_currency': 'USD'}
 
+# Mixins
 class OrderGen():
     def order(self, qty, action, order_type, limit_price=0):
         qty = int(qty)
@@ -19,6 +20,47 @@ class OrderGen():
                         'm_orderType': order_type, 'm_lmtPrice': limit_price}
         return Order(**order_args)
 
+class OptPair(OrderGen):
+    def __init__(self, opt1_id, opt2_id):
+        self.opt1_id, self.opt2_id = (opt1_id, opt2_id) 
+        self.contract = self.gen_contract()
+
+class OptUnder(OrderGen):
+    def __init__(self, opt_id, stk_id):
+        self.opt_id, self.stk_id = (opt_id, stk_id) 
+        self.contract = self.gen_contract()
+
+class Spread(OptPair):
+    def gen_contract(self):
+        opt1 = {'m_conId': self.opt1_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt1.update(LEG_BASE)
+        opt2 = {'m_conId': self.opt2_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        opt2.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**opt1))
+        legs.add(ComboLeg(**opt2))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
+
+class SameSide(OptPair):
+    def gen_contract(self):
+        opt1 = {'m_conId': self.opt1_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt1.update(LEG_BASE)
+        opt2 = {'m_conId': self.opt2_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt2.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**opt1))
+        legs.add(ComboLeg(**opt2))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
+
+# Combo classes
 class Box(OrderGen):
     def __init__(self, call1_id,  put1_id, call2_id,  put2_id):
         self.call1_id, self.put1_id = (call1_id, put1_id) 
@@ -72,11 +114,17 @@ class Box(OrderGen):
             raise Exception("Synthetic1 strikes don't match")
         if call2_con.m_strike != put2_con.m_strike: 
             raise Exception("Synthetic2 strikes don't match")
+        if call1_con.m_strike == call2_con.m_strike: 
+            raise Exception("Synthetic strikes match")
+        return True
 
 class Butterfly(OrderGen):
-    def __init__(self, lwing_id,  body_id,  rwing_id):
+    def __init__(self, lwing_id,  body_id,  rwing_id, right):
         self.lwing_id, self.rwing_id = (lwing_id, rwing_id)
         self.body_id = body_id
+        if right not in ['P', 'C']: 
+            raise Exception("Valid rights are 'P' and 'C'")
+        self.right = right
         self.contract = self.gen_contract()
 
     def gen_contract(self):
@@ -96,7 +144,6 @@ class Butterfly(OrderGen):
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
 
-class ButterflyCalls(Butterfly):
     def is_sane(self, client):
         lwing_cd = client.request_contract_details(ContractId(self.lwing_id))
         body_cd = client.request_contract_details(ContractId(self.body_id))
@@ -107,71 +154,64 @@ class ButterflyCalls(Butterfly):
         if lwing_con.m_secType != 'OPT': raise Exception("LWing is not 'OPT'")
         if body_con.m_secType != 'OPT': raise Exception("Body is not 'OPT'")
         if rwing_con.m_secType != 'OPT': raise Exception("RWing is not 'OPT'")
-        if lwing_con.m_right != 'C': raise Exception('LWing is not a call')
-        if body_con.m_right != 'C': raise Exception('Body is not a call')
-        if rwing_con.m_right != 'C': raise Exception('Rwing is not a call')
+        if lwing_con.m_right != self.right:
+            raise Exception('LWing is not a %s' % self.right)
+        if body_con.m_right != self.right:
+            raise Exception('Body is not a %s' % self.right)
+        if rwing_con.m_right != self.right:
+            raise Exception('Rwing is not a %s' % self.right)
         if not (lwing_con.m_expiry == body_con.m_expiry == rwing_con.m_expiry):
             raise Exception("Expirys don't match")
         if not (lwing_con.m_symbol == body_con.m_symbol == rwing_con.m_symbol):
             raise Exception("Underlyings don't match")
         if (lwing_con.m_strike + rwing_con.m_strike)/2.0 != body_con.m_strike: 
             raise Exception("Body strike not in between wings")
+        return True
 
-class ButterflyPuts(Butterfly):
-    def is_sane(self, client):
-        lwing_cd = client.request_contract_details(ContractId(self.lwing_id))
-        body_cd = client.request_contract_details(ContractId(self.body_id))
-        rwing_cd = client.request_contract_details(ContractId(self.rwing_id))
-        lwing_con = lwing_cd.m_summary
-        body_con = body_cd.m_summary
-        rwing_con = rwing_cd.m_summary
-        if lwing_con.m_secType != 'OPT': raise Exception("LWing is not 'OPT'")
-        if body_con.m_secType != 'OPT': raise Exception("Body is not 'OPT'")
-        if rwing_con.m_secType != 'OPT': raise Exception("RWing is not 'OPT'")
-        if lwing_con.m_right != 'P': raise Exception('LWing is not a put')
-        if body_con.m_right != 'P': raise Exception('Body is not a put')
-        if rwing_con.m_right != 'P': raise Exception('Rwing is not a put')
-        if not (lwing_con.m_expiry == body_con.m_expiry == rwing_con.m_expiry):
-            raise Exception("Expirys don't match")
-        if not (lwing_con.m_symbol == body_con.m_symbol == rwing_con.m_symbol):
-            raise Exception("Underlyings don't match")
-        if (lwing_con.m_strike + rwing_con.m_strike)/2.0 != body_con.m_strike: 
-            raise Exception("Body strike not in between wings")
-
-class CalendarSpread(OrderGen):
-    def __init__(self, Exp1_id, Exp2_id):
-        self.Exp1_id, self.Exp2_id = (Exp1_id, Exp2_id) 
-        self.contract = self.gen_contract()
-
+class BuyWrite(OptUnder):
     def gen_contract(self):
-        Exp1 = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'BUY'}
-        Exp1.update(LEG_BASE)
-        Exp1 = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'SELL'}
-        Exp1.update(LEG_BASE)
+        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        opt.update(LEG_BASE)
+        stk = {'m_conId': self.stk_id, 'm_ratio': 100, 'm_action': 'BUY'}
+        stk.update(LEG_BASE)
 
         legs = Vector()
-        legs.add(ComboLeg(**Exp1))
-        legs.add(ComboLeg(**Exp2))
+        legs.add(ComboLeg(**opt))
+        legs.add(ComboLeg(**stk))
 
         combo_args = {'m_comboLegs': legs}
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
 
     def is_sane(self, client):
-        Exp1_cd = client.request_contract_details(ContractId(self.Exp1_id))
-        Exp2_cd = client.request_contract_details(ContractId(self.Exp2_id))
-        Exp1_con = Exp1_cd.m_summary
-        Exp2_con = Exp2_cd.m_summary
-        if Exp1_con.m_secType != 'OPT': raise Exception("Exp1 is not 'OPT'")
-        if Exp2_con.m_secType != 'OPT': raise Exception("Exp1 is not 'OPT'")
-        if Exp1_con.m_expiry == Exp2_con.m_expiry:
-            raise Exception("Expirys need to be different")
-        if Exp1_con.m_right != Exp2_con.m_right:
-            raise Exception("Rights don't match")
-        if Exp1_con.m_strike != Exp2_con.m_strike: 
+        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+        opt_con = opt_cd.m_summary
+        stk_con = stk_cd.m_summary
+        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+        if opt_con.m_right != 'C': raise Exception("Call is not a call")
+        if opt_con.m_symbol != stk_con.m_symbol:
+            raise Exception("Option is on wrong underlying, or wrong Stock")
+        return True
+
+class CalendarSpread(Spread):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right != opt2_con.m_right: 
+            raise Exception('Options are different rights')
+        if opt1_con.m_expiry == opt2_con.m_expiry:
+            raise Exception("Expirys match")
+        if opt1_con.m_strike != opt2_con.m_strike: 
             raise Exception("Strikes don't match")
-        if Exp1_con.m_symbol != Exp2_con.m_symbol:
-            raise Exception("Underlyings don't match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
 
 class Conversion(OrderGen):
     def __init__(self, call_id, stock_id, put_id):
@@ -215,41 +255,119 @@ class Conversion(OrderGen):
             raise Exception("Call is on wrong underlying, or wrong Stock")
         if put_con.m_symbol != stock_con.m_symbol:
             raise Exception("Put is on wrong underlying, or wrong Stock")
+        return True
 
 class DeltaNeutral(OrderGen):
-    def __init__(self, opt_id, stk_id, delta):
-        self.opt_id, self.stk_id, self.delta = (opt_id, stk_id, delta) 
+    pass
+#    def __init__(self, opt_id, stk_id, delta):
+#        self.opt_id, self.stk_id, self.delta = (opt_id, stk_id, delta) 
+#        self.contract = self.gen_contract()
+
+#    def gen_contract(self):
+#        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
+#        opt.update(LEG_BASE)
+#        stk = {'m_conId': self.stk_id, 'm_ratio': int(100*self.delta), 'm_action': 'SELL'}
+#        stk.update(LEG_BASE)
+
+#        legs = Vector()
+#        legs.add(ComboLeg(**opt))
+#        legs.add(ComboLeg(**stk))
+
+#        combo_args = {'m_comboLegs': legs}
+#        combo_args.update(COMBO_BASE)
+#        return Contract(**combo_args)
+
+#    def is_sane(self, client):
+#        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+#        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+#        opt_con = opt_cd.m_summary
+#        stk_con = stk_cd.m_summary
+#        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+#        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+#        if opt_con.m_symbol != stk_con.m_symbol:
+#            raise Exception("Option is on wrong underlying, or wrong Stock")
+#        return True
+
+class DiagonalSpread(Spread):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right != opt2_con.m_right: 
+            raise Exception('Options are different rights')
+        if opt1_con.m_expiry == opt2_con.m_expiry:
+            raise Exception("Expirys match")
+        if opt1_con.m_strike == opt2_con.m_strike: 
+            raise Exception("Strikes match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
+
+class IronCondor(OrderGen):
+    def __init__(self, wingcall_id, bodycall_id, bodyput_id, wingput_id, comp):
+        self.wingcall_id, self.bodycall_id = (wingcall_id, bodycall_id)
+        self.bodyput_id, self.wingput_id = (bodyput_id, wingput_id)
+        if comp not in ['PPCC', 'CCPP']: 
+            raise Exception("Valid comp types are 'PPCC' and 'CCPP'")
+        self.comp = comp
         self.contract = self.gen_contract()
 
     def gen_contract(self):
-        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
-        opt.update(LEG_BASE)
-        stk = {'m_conId': self.stk_id, 'm_ratio': self.delta, 'm_action': 'SELL'}
-        stk.update(LEG_BASE)
+        wingcall = {'m_conId': self.wingcall_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        wingcall.update(LEG_BASE)
+        bodycall = {'m_conId': self.bodycall_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        bodycall.update(LEG_BASE)
+        bodyput = {'m_conId': self.bodyput_id, 'm_ratio': 1, 'm_action': 'SELL'}
+        bodyput.update(LEG_BASE)
+        wingput = {'m_conId': self.wingput_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        wingput.update(LEG_BASE)
 
         legs = Vector()
-        legs.add(ComboLeg(**opt))
-        legs.add(ComboLeg(**stk))
+        legs.add(ComboLeg(**wingcall))
+        legs.add(ComboLeg(**bodycall))
+        legs.add(ComboLeg(**bodyput))
+        legs.add(ComboLeg(**wingput))
 
         combo_args = {'m_comboLegs': legs}
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
 
     def is_sane(self, client):
-        opt_cd = client.request_contract_details(ContractId(self.opt_id))
-        stk_cd = client.request_contract_details(ContractId(self.stk_id))
-        opt_con = opt_cd.m_summary
-        stk_con = stk_cd.m_summary
-        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
-        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
-        if opt_con.m_symbol != stk_con.m_symbol:
-            raise Exception("Option is on wrong underlying, or wrong Stock")
-
-class DiagonalSpread(OrderGen):
-    pass
-
-class IronCorridor(OrderGen):
-    pass
+        wingcall_cd = client.request_contract_details(ContractId(self.wingcall_id))
+        bodycall_cd = client.request_contract_details(ContractId(self.bodyput_id))
+        bodyput_cd = client.request_contract_details(ContractId(self.bodycall_id))
+        wingput_cd = client.request_contract_details(ContractId(self.wingput_id))
+        wingcall_con = wingcall_cd.m_summary
+        bodycall_con = bodycall_cd.m_summary
+        bodyput_con = bodyput_cd.m_summary
+        wingput_con = wingput_cd.m_summary
+        if wingcall_con.m_secType != 'OPT': raise Exception("wingcall is not 'OPT'")
+        if bodycall_con.m_secType != 'OPT': raise Exception("bodycall is not 'OPT'")
+        if bodyput_con.m_secType != 'OPT': raise Exception("bodyput is not 'OPT'")
+        if wingput_con.m_secType != 'OPT': raise Exception("wingput is not 'OPT'")
+        if wingcall_con.m_right != 'P': raise Exception('wingput is not a put')
+        if bodycall_con.m_right != 'P': raise Exception('bodycall is not a put')
+        if bodyput_con.m_right != 'C': raise Exception('bodyput is not a call')
+        if wingput_con.m_right != 'C': raise Exception('wingput is not a call')
+        if not (wingcall_con.m_expiry == bodycall_con.m_expiry 
+                == bodyput_con.m_expiry == wingput_con.m_expiry):
+            raise Exception("Expirys don't match")
+        if not (wingcall_con.m_symbol == bodycall_con.m_symbol 
+                == bodyput_con.m_symbol == wingput_con.m_symbol):
+            raise Exception("Underlyings don't match")
+        if self.comp=='CCPP':
+            if not (wingcall_con.m_strike < bodycall_con.m_strike
+                    < bodyput_con.m_strike < wingput_con.m_strike): 
+                raise Exception("Strikes are wrong")
+        elif self.comp=='PPCC':
+            if not (wingcall_con.m_strike > bodycall_con.m_strike
+                    > bodyput_con.m_strike > wingput_con.m_strike): 
+                raise Exception("Strikes are wrong")
+        else: raise Exception('Unknown pattern %s' % str(self.comp))
+        return True
 
 class Reversal(Conversion):
     def gen_contract(self):
@@ -269,29 +387,175 @@ class Reversal(Conversion):
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
 
-class RiskReversal(OrderGen):
-    pass
+class RiskReversal(Spread):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right != 'P': raise Exception('Put is not a put')
+        if opt2_con.m_right != 'C': raise Exception('Call is not a call')
+        if opt1_con.m_expiry != opt2_con.m_expiry:
+            raise Exception("Expirys don't match")
+        if not opt1_con.m_strike < opt2_con.m_strike:
+            raise Exception("Put strike is not less than call strike")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
 
 class SFFOPT(OrderGen):
     pass
 
-class Straddle(OrderGen):
-    pass
+class Straddle(SameSide):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right == opt2_con.m_right: 
+            raise Exception('Options have same rights')
+        if opt1_con.m_expiry != opt2_con.m_expiry:
+            raise Exception("Expirys don't match")
+        if opt1_con.m_strike != opt2_con.m_strike: 
+            raise Exception("Strikes don't match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
 
-class Strangle(OrderGen):
-    pass
+class Strangle(SameSide):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right == opt2_con.m_right: 
+            raise Exception('Options have same rights')
+        if opt1_con.m_expiry != opt2_con.m_expiry:
+            raise Exception("Expirys don't match")
+        if opt1_con.m_strike == opt2_con.m_strike: 
+            raise Exception("Strikes match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
 
-class StkOpt(OrderGen):
-    pass
+class StkOpt(OptUnder):
+    def gen_contract(self):
+        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt.update(LEG_BASE)
+        stk = {'m_conId': self.stk_id, 'm_ratio': 100, 'm_action': 'BUY'}
+        stk.update(LEG_BASE)
 
-class Synthetic(OrderGen):
-    pass
+        legs = Vector()
+        legs.add(ComboLeg(**opt))
+        legs.add(ComboLeg(**stk))
 
-class SyntheticPut(OrderGen):
-    pass
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
 
-class SyntheticCall(OrderGen):
-    pass
+    def is_sane(self, client):
+        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+        opt_con = opt_cd.m_summary
+        stk_con = stk_cd.m_summary
+        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+        if opt_con.m_symbol != stk_con.m_symbol:
+            raise Exception("Option is on wrong underlying, or wrong Stock")
+        return True
 
-class VerticalSpread(OrderGen):
-    pass
+class Synthetic(Spread):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right == opt2_con.m_right: 
+            raise Exception('Options have same rights')
+        if opt1_con.m_expiry != opt2_con.m_expiry:
+            raise Exception("Expirys don't match")
+        if opt1_con.m_strike != opt2_con.m_strike: 
+            raise Exception("Strikes don't match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
+
+class SyntheticPut(OptUnder):
+    def gen_contract(self):
+        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt.update(LEG_BASE)
+        stk = {'m_conId': self.stk_id, 'm_ratio': 100, 'm_action': 'SELL'}
+        stk.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**opt))
+        legs.add(ComboLeg(**stk))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
+
+    def is_sane(self, client):
+        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+        opt_con = opt_cd.m_summary
+        stk_con = stk_cd.m_summary
+        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+        if opt_con.m_right != 'C': raise Exception("Call is not a call")
+        if opt_con.m_symbol != stk_con.m_symbol:
+            raise Exception("Option is on wrong underlying, or wrong Stock")
+        return True
+
+class SyntheticCall(OptUnder):
+    def gen_contract(self):
+        opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
+        opt.update(LEG_BASE)
+        stk = {'m_conId': self.stk_id, 'm_ratio': 100, 'm_action': 'BUY'}
+        stk.update(LEG_BASE)
+
+        legs = Vector()
+        legs.add(ComboLeg(**opt))
+        legs.add(ComboLeg(**stk))
+
+        combo_args = {'m_comboLegs': legs}
+        combo_args.update(COMBO_BASE)
+        return Contract(**combo_args)
+
+    def is_sane(self, client):
+        opt_cd = client.request_contract_details(ContractId(self.opt_id))
+        stk_cd = client.request_contract_details(ContractId(self.stk_id))
+        opt_con = opt_cd.m_summary
+        stk_con = stk_cd.m_summary
+        if opt_con.m_secType != 'OPT': raise Exception("Option is not 'OPT'")
+        if stk_con.m_secType != 'STK': raise Exception("Stock is not 'STK'")
+        if opt_con.m_right != 'P': raise Exception("Put is not a put")
+        if opt_con.m_symbol != stk_con.m_symbol:
+            raise Exception("Option is on wrong underlying, or wrong Stock")
+        return True
+
+class VerticalSpread(Spread):
+    def is_sane(self, client):
+        opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
+        opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
+        opt1_con = opt1_cd.m_summary
+        opt2_con = opt2_cd.m_summary
+        if opt1_con.m_secType != 'OPT': raise Exception("Option1 is not 'OPT'")
+        if opt2_con.m_secType != 'OPT': raise Exception("Option2 is not 'OPT'")
+        if opt1_con.m_right != opt2_con.m_right: 
+            raise Exception('Options are different rights')
+        if opt1_con.m_expiry != opt2_con.m_expiry:
+            raise Exception("Expirys don't match")
+        if opt1_con.m_strike == opt2_con.m_strike: 
+            raise Exception("Strikes match")
+        if opt1_con.m_symbol != opt2_con.m_symbol:
+            raise Exception("Options are on different underlyings")
+        return True
