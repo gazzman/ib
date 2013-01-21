@@ -10,10 +10,12 @@ import sys
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
 from com.ib.client import Contract, ExecutionFilter
 
-from ib.contractkeys import ContractId, Currency, Option, OptionLocal, Stock
+from ib.contractkeys import (ContractId, Currency, CurrencyLocal,
+                             Option, OptionLocal, Stock)
 from ib.tick_types import tick_types
 
 LOGLEVEL = logging.DEBUG
+CONKEYTYPES = [ContractId, Currency, CurrencyLocal, Option, OptionLocal, Stock]
 
 class CallbackBase():
     realtime_bars = dict()
@@ -336,18 +338,17 @@ class Client(CallbackBase, EWrapper):
     def request_contract_details(self, key):
         if key not in self.cached_cds: 
             args = key._asdict()
-            if type(key) == Stock: 
-                args.update(self.stk_base)
+            if type(key) == ContractId and key[0] in self.id_to_cd: 
+                return self.id_to_cd[key[0]]
+            elif type(key) in (Currency, CurrencyLocal):
+                args.update(self.fx_base)
             elif type(key) in (Option, OptionLocal): 
                 args.update(self.opt_base)
-            elif type(key) == Currency:
-                args.update(self.fx_base)
-            elif type(key) == ContractId and key[0] in self.id_to_cd: 
-                return self.id_to_cd[key[0]]
+            elif type(key) == Stock: 
+                args.update(self.stk_base)
             else:
-                validtypes = 'Currency, ContractId, Option, OptionLocal, Stock'
                 errmsg = 'Valid arg types are %s; not %s'
-                raise TypeError(errmsg % (validtypes, str(type(key)))) 
+                raise TypeError(errmsg % (', '.join(CONKEYTYPES), str(type(key)))) 
             args = dict([(k, v) for (k, v) in args.items() if v])
             contract = Contract(**args)
             self.req_id += 1
