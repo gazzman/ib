@@ -1,4 +1,8 @@
 #!/usr/local/bin/jython
+__version__ = ".00"
+__author__ = "gazzman"
+__copyright__ = "(C) gazzman GNU GPL 3."
+__contributors__ = []
 from datetime import datetime, timedelta
 from time import sleep
 from logging.handlers import TimedRotatingFileHandler
