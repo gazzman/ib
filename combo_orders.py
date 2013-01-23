@@ -119,12 +119,9 @@ class Box(OrderGen):
         return True
 
 class Butterfly(OrderGen):
-    def __init__(self, lwing_id,  body_id,  rwing_id, right):
+    def __init__(self, lwing_id,  body_id,  rwing_id):
         self.lwing_id, self.rwing_id = (lwing_id, rwing_id)
         self.body_id = body_id
-        if right not in ['P', 'C']: 
-            raise Exception("Valid rights are 'P' and 'C'")
-        self.right = right
         self.contract = self.gen_contract()
 
     def gen_contract(self):
@@ -154,12 +151,8 @@ class Butterfly(OrderGen):
         if lwing_con.m_secType != 'OPT': raise Exception("LWing is not 'OPT'")
         if body_con.m_secType != 'OPT': raise Exception("Body is not 'OPT'")
         if rwing_con.m_secType != 'OPT': raise Exception("RWing is not 'OPT'")
-        if lwing_con.m_right != self.right:
-            raise Exception('LWing is not a %s' % self.right)
-        if body_con.m_right != self.right:
-            raise Exception('Body is not a %s' % self.right)
-        if rwing_con.m_right != self.right:
-            raise Exception('Rwing is not a %s' % self.right)
+        if not (lwing_con.m_right == body_con.m_right == rwing_con.m_right):
+            raise Exception('Options have different rights.')
         if not (lwing_con.m_expiry == body_con.m_expiry == rwing_con.m_expiry):
             raise Exception("Expirys don't match")
         if not (lwing_con.m_symbol == body_con.m_symbol == rwing_con.m_symbol):
