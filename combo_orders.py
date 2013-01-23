@@ -1,7 +1,7 @@
 #!/usr/local/bin/jython
 __version__ = ".00"
 __author__ = "gazzman"
-__copyright__ = "(C) gazzman GNU GPL 3."
+__copyright__ = "(C) 2013 gazzman GNU GPL 3."
 __contributors__ = []
 import java.util.Vector as Vector
 
