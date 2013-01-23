@@ -38,6 +38,7 @@ class CallbackBase():
     data_requests = dict()
     executions = dict()
     mkt_data_requests = dict()
+    data_req_fnames = dict()
 
     # Callback data handlers
     def error(self, *args):
@@ -70,8 +71,9 @@ class CallbackBase():
             self.satisfied_requests[req_id] = datetime.now()
         self.logger.info(msg)
 
-    def datahandler(self, fnm, req_id, datamsg):
+    def datahandler(self, req_id, datamsg):
         self.logger.debug('Received datapoint for req_id %i' % req_id)
+        fnm = self.data_req_fnames[req_id]
         f = open(fnm, 'a') 
         f.write('%s\n' % datamsg)
         f.close()
@@ -217,20 +219,17 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        fnm = '%i_%s_HD.csv' % self.historical_data[reqId]
-        self.datahandler(fnm, reqId, msg)
+        self.datahandler(reqId, msg)
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
                     count):
         msg = EWrapperMsgGenerator.realtimeBar(reqId, time, open_, high, low, 
                                                close, volume, wap, count)
-        fnm = '%i_%s_RTD.csv' % self.realtime_bars[reqId]
-        self.datahandler(fnm, reqId, msg)
+        self.datahandler(reqId, msg)
 
     def fundamentalData(self, reqId, data):
         msg = EWrapperMsgGenerator.fundamentalData(reqId, data)
-        fnm = '%i_%s_FD.csv' % self.fundamentals[req_id]
-        self.datahandler(fnm, req_id, msg)
+        self.datahandler(req_id, msg)
 
     # Scanner callbacks
     def scannerParameters(self, xml):
@@ -252,17 +251,15 @@ class CallbackBase():
     def tickPrice(self, tickerId, field, price, canAutoExecute):
         msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
                                              canAutoExecute)
-        fnm = '%i_%s_TP.csv' % self.mkt_data[tickerId]
         self.msghandler(msg)
         msg = '%s %s' % (datetime.now().isoformat(), msg)
-        self.datahandler(fnm, tickerId, msg)
+        self.datahandler(tickerId, msg)
 
     def tickSize(self, tickerId, field, size):
         msg = EWrapperMsgGenerator.tickSize(tickerId, field, size)
-        fnm = '%i_%s_TS.csv' % self.mkt_data[tickerId]
         self.msghandler(msg)
         msg = '%s %s' % (datetime.now().isoformat(), msg)
-        self.datahandler(fnm, tickerId, msg)
+        self.datahandler(tickerId, msg)
 
     def tickOptionComputation(self, tickerId, field, impliedVol, delta, 
                               optPrice, pvDividend, gamma, vega, theta, 
@@ -298,6 +295,7 @@ class CallbackBase():
     def tickSnapshotEnd(self, tickerId):
         msg = EWrapperMsgGenerator.tickSnapshotEnd(tickerId)
         self.fulfilled_tick_snapshots[tickerId] = datetime.now()
+        del self.mkt_data[tickerId]
         self.msghandler(msg)
 
     def marketDataType(self, reqId, marketDataType):
@@ -363,39 +361,46 @@ class Client(CallbackBase, EWrapper):
         return self.cached_cds[key]
 
     # Request data methods
-    def request_mkt_data(self, contract, gtick_list='', snapshot=True):
-        if gtick_list != '': snapshot=False
-        elif snapshot: gtick_list = ''
+    def request_mkt_data(self, contract, gtick_list='', snapshot=True,
+                         fname=None):
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
+        if not fname: fname = 'MKT_%i_%s.txt' % (contract.m_conId, gtick_list)
+        self.data_req_fnames[self.req_id] = fname
         self.mkt_data[self.req_id] = (contract.m_conId, gtick_list)
         self.m_client.reqMktData(self.req_id, contract, gtick_list, snapshot)
         return self.req_id
 
-    def start_realtime_bars(self, contract, show='TRADES'):
+    def start_realtime_bars(self, contract, show='TRADES', fname=None):
         if self.too_many_requests(): return None
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
         self.realtime_bars[self.req_id] = (contract.m_conId, show)
+        if not fname: fname = 'RTBARS_%i_%s.txt' % (contract.m_conId, show)
+        self.data_req_fnames[self.req_id] = fname
         self.m_client.reqRealTimeBars(self.req_id, contract, 5, show, 0)
         return self.req_id
 
     def request_historical_data(self, contract, end_time=None, duration='1 D',
-                                bar_size='1 min', show='TRADES'):
+                                bar_size='1 min', show='TRADES', fname=None):
         if self.too_many_requests(): return None
         if not end_time: end_time = datetime.now().strftime('%Y%m%d %H:%M:%S')
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
         self.historical_data[self.req_id] = (contract.m_conId, show)
+        if not fname: fname = 'HSTBARS_%i_%s.txt' % (contract.m_conId, show)
+        self.data_req_fnames[self.req_id] = fname
         self.m_client.reqHistoricalData(self.req_id, contract, end_time,
                                         duration, bar_size, show, 1, 1)
         return self.req_id
 
-    def request_fundamentals(self, contract, report_type):
+    def request_fundamentals(self, contract, report_type, fname=None):
         if self.too_many_requests(): return None
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
         self.fundamentals[self.req_id] = (contract.m_conId, report_type)
+        if not fname: fname = 'FND_%i_%s.txt' % (contract.m_conId, report_type)
+        self.data_req_fnames[req_id] = fname
         self.m_client.reqFundamentalData(self.req_id, contract, report_type)
         return self.req_id
 
