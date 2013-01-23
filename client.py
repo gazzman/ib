@@ -8,7 +8,6 @@ from time import sleep
 from logging.handlers import TimedRotatingFileHandler
 import java.io.EOFException
 import logging
-import pickle
 import sys
 
 from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
