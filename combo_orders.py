@@ -24,11 +24,13 @@ class OptPair(OrderGen):
     def __init__(self, opt1_id, opt2_id):
         self.opt1_id, self.opt2_id = (opt1_id, opt2_id) 
         self.contract = self.gen_contract()
+        self.conId = self.gen_conId()
 
 class OptUnder(OrderGen):
-    def __init__(self, opt_id, stk_id):
-        self.opt_id, self.stk_id = (opt_id, stk_id) 
+    def __init__(self, stk_id, opt_id):
+        self.stk_id, self.opt_id = (stk_id, opt_id) 
         self.contract = self.gen_contract()
+        self.conId = self.gen_conId()
 
 class Spread(OptPair):
     def gen_contract(self):
@@ -66,6 +68,7 @@ class Box(OrderGen):
         self.call1_id, self.put1_id = (call1_id, put1_id) 
         self.call2_id, self.put2_id = (call2_id, put2_id) 
         self.contract = self.gen_contract()
+        self.conId = 'Box_%i_%i_%i_%i' % (call1_id, put1_id, call2_id, put2_id)
 
     def gen_contract(self):
         call1 = {'m_conId': self.call1_id, 'm_ratio': 1, 'm_action': 'BUY'}
@@ -123,6 +126,7 @@ class Butterfly(OrderGen):
         self.lwing_id, self.rwing_id = (lwing_id, rwing_id)
         self.body_id = body_id
         self.contract = self.gen_contract()
+        self.conId = 'Butterfly_%i_%i_%i' % (lwing_id, body_id, rwing_id)
 
     def gen_contract(self):
         lwing = {'m_conId': self.lwing_id, 'm_ratio': 1, 'm_action': 'BUY'}
@@ -162,6 +166,9 @@ class Butterfly(OrderGen):
         return True
 
 class BuyWrite(OptUnder):
+    def gen_conId(self):
+        return 'BuyWrite_%i_%i' % (self.stk_id, self.opt_id)
+        
     def gen_contract(self):
         opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'SELL'}
         opt.update(LEG_BASE)
@@ -189,6 +196,9 @@ class BuyWrite(OptUnder):
         return True
 
 class CalendarSpread(Spread):
+    def gen_conId(self):
+        return 'CalendarSpread_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -210,6 +220,7 @@ class Conversion(OrderGen):
     def __init__(self, call_id, stock_id, put_id):
         self.call_id, self.stock_id, self.put_id = (call_id, stock_id, put_id) 
         self.contract = self.gen_contract()
+        self.conId = 'Conversion_%i_%i_%i' % (call_id, stock_id, put_id)
 
     def gen_contract(self):
         call = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'SELL'}
@@ -253,7 +264,7 @@ class Conversion(OrderGen):
 class DeltaNeutral(OrderGen):
     pass
 #    def __init__(self, opt_id, stk_id, delta):
-#        self.opt_id, self.stk_id, self.delta = (opt_id, stk_id, delta) 
+#        self.stk_id, self.opt_id, self.delta = (stk_id, opt_id, delta) 
 #        self.contract = self.gen_contract()
 
 #    def gen_contract(self):
@@ -282,6 +293,9 @@ class DeltaNeutral(OrderGen):
 #        return True
 
 class DiagonalSpread(Spread):
+    def gen_conId(self):
+        return 'DiagonalSpread_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -300,13 +314,12 @@ class DiagonalSpread(Spread):
         return True
 
 class IronCondor(OrderGen):
-    def __init__(self, wingcall_id, bodycall_id, bodyput_id, wingput_id, comp):
+    def __init__(self, wingcall_id, bodycall_id, bodyput_id, wingput_id):
         self.wingcall_id, self.bodycall_id = (wingcall_id, bodycall_id)
         self.bodyput_id, self.wingput_id = (bodyput_id, wingput_id)
-        if comp not in ['PPCC', 'CCPP']: 
-            raise Exception("Valid comp types are 'PPCC' and 'CCPP'")
-        self.comp = comp
         self.contract = self.gen_contract()
+        self.conId = 'IronCondor_%i_%i_%i_%i' % (wingcall_id, bodycall_id,
+                                                 bodyput_id, wingput_id)
 
     def gen_contract(self):
         wingcall = {'m_conId': self.wingcall_id, 'm_ratio': 1, 'm_action': 'BUY'}
@@ -351,18 +364,19 @@ class IronCondor(OrderGen):
         if not (wingcall_con.m_symbol == bodycall_con.m_symbol 
                 == bodyput_con.m_symbol == wingput_con.m_symbol):
             raise Exception("Underlyings don't match")
-        if self.comp=='CCPP':
-            if not (wingcall_con.m_strike < bodycall_con.m_strike
-                    < bodyput_con.m_strike < wingput_con.m_strike): 
-                raise Exception("Strikes are wrong")
-        elif self.comp=='PPCC':
-            if not (wingcall_con.m_strike > bodycall_con.m_strike
-                    > bodyput_con.m_strike > wingput_con.m_strike): 
-                raise Exception("Strikes are wrong")
-        else: raise Exception('Unknown pattern %s' % str(self.comp))
+        if not ((wingcall_con.m_strike < bodycall_con.m_strike
+                 < bodyput_con.m_strike < wingput_con.m_strike)
+               or (wingcall_con.m_strike > bodycall_con.m_strike
+                   > bodyput_con.m_strike > wingput_con.m_strike)):
+            raise Exception("Strikes are wrong")
         return True
 
 class Reversal(Conversion):
+    def __init__(self, call_id, stock_id, put_id):
+        self.call_id, self.stock_id, self.put_id = (call_id, stock_id, put_id) 
+        self.contract = self.gen_contract()
+        self.conId = 'Reversal_%i_%i_%i' % (call_id, stock_id, put_id)
+
     def gen_contract(self):
         call = {'m_conId': self.call_id, 'm_ratio': 1, 'm_action': 'BUY'}
         call.update(LEG_BASE)
@@ -381,6 +395,9 @@ class Reversal(Conversion):
         return Contract(**combo_args)
 
 class RiskReversal(Spread):
+    def gen_conId(self):
+        return 'RiskReversal_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -402,6 +419,9 @@ class SFFOPT(OrderGen):
     pass
 
 class Straddle(SameSide):
+    def gen_conId(self):
+        return 'Straddle_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -420,6 +440,9 @@ class Straddle(SameSide):
         return True
 
 class Strangle(SameSide):
+    def gen_conId(self):
+        return 'Strangle_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -438,6 +461,9 @@ class Strangle(SameSide):
         return True
 
 class StkOpt(OptUnder):
+    def gen_conId(self):
+        return 'StkOpt_%i_%i' % (self.stk_id, self.opt_id)
+
     def gen_contract(self):
         opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
         opt.update(LEG_BASE)
@@ -464,6 +490,9 @@ class StkOpt(OptUnder):
         return True
 
 class Synthetic(Spread):
+    def gen_conId(self):
+        return 'Synthetic_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
@@ -482,6 +511,9 @@ class Synthetic(Spread):
         return True
 
 class SyntheticPut(OptUnder):
+    def gen_conId(self):
+        return 'SyntheticPut_%i_%i' % (self.stk_id, self.opt_id)
+
     def gen_contract(self):
         opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
         opt.update(LEG_BASE)
@@ -509,6 +541,9 @@ class SyntheticPut(OptUnder):
         return True
 
 class SyntheticCall(OptUnder):
+    def gen_conId(self):
+        return 'SyntheticCall_%i_%i' % (self.stk_id, self.opt_id)
+
     def gen_contract(self):
         opt = {'m_conId': self.opt_id, 'm_ratio': 1, 'm_action': 'BUY'}
         opt.update(LEG_BASE)
@@ -536,6 +571,9 @@ class SyntheticCall(OptUnder):
         return True
 
 class VerticalSpread(Spread):
+    def gen_conId(self):
+        return 'VerticalSpread_%i_%i' % (self.opt1_id, self.opt2_id)
+
     def is_sane(self, client):
         opt1_cd = client.request_contract_details(ContractId(self.opt1_id))
         opt2_cd = client.request_contract_details(ContractId(self.opt2_id))
