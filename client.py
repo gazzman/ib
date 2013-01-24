@@ -10,12 +10,11 @@ import java.io.EOFException
 import logging
 import sys
 
-from com.ib.client import EWrapper, EWrapperMsgGenerator, EClientSocket
-from com.ib.client import Contract, ExecutionFilter
+from com.ib.client import (EWrapper, EWrapperMsgGenerator, EClientSocket,
+                           Contract, ExecutionFilter, TickType)
 
 from ib.contractkeys import (ContractId, Currency, CurrencyLocal,
                              Option, OptionLocal, Stock)
-from ib.tick_types import tick_types
 
 LOGLEVEL = logging.DEBUG
 CONKEYTYPES = [ContractId, Currency, CurrencyLocal, Option, OptionLocal, Stock]
@@ -276,7 +275,7 @@ class CallbackBase():
         self.msghandler('tickGen: ' + msg)
 
     def tickString(self, tickerId, tickType, value):
-        msg = EWrapperMsgGenerator.tickString(tickerID, tickType, value)
+        msg = EWrapperMsgGenerator.tickString(tickerId, tickType, value)
         self.msghandler('tickString: ' + msg)
 
     def tickEFP(self, tickerId, tickType, basisPoints, formattedBasisPoints, 
@@ -314,9 +313,7 @@ class Client(CallbackBase, EWrapper):
         self.init_logger()
         self.req_id = 0
         self.m_client = EClientSocket(self)
-        tt = [x.strip() for x in tick_types.split('\n') if x.strip() != '']
-        tt = [x.split(',') for x in tt]
-        self.tick_types = dict([(int(x[0]), x[1]) for x in tt])
+        self.tt = TickType()
 
     def init_logger(self):
         cid = '%2i' % self.client_id
