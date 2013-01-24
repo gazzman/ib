@@ -12,10 +12,15 @@ from ib.contractkeys import ContractId
 LEG_BASE = {'m_exchange': 'SMART', 'm_openClose': 0, 
             'm_shortSaleSlot': 0, 'm_designatedLocation': ''}
 COMBO_BASE = {'m_symbol': 'USD', 'm_secType': 'BAG', 'm_exchange': 'SMART',
-                'm_currency': 'USD'}
+              'm_currency': 'USD'}
 
 # Mixins
-class OrderGen():
+class ExpiryPayoffs():
+    def option_expiry_val(self, right, spot, strike):
+        if right == 'C': return 0 if spot < strike else spot - strike
+        if right == 'P': return 0 if spot > strike else strike - spot
+
+class OrderGen(ExpiryPayoffs):
     def order(self, qty, action, order_type, limit_price=0):
         qty = int(qty)
         action = action.upper()
@@ -51,6 +56,18 @@ class Spread(OptPair):
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
 
+    def payoff_at_expiry(self, spot, client):
+        opt1_right = client.request_contract_details\
+                                   (ContractId(self.opt1_id)).m_summary.m_right
+        opt2_right = client.request_contract_details\
+                                   (ContractId(self.opt2_id)).m_summary.m_right
+        opt1_strike = client.request_contract_details\
+                                  (ContractId(self.opt1_id)).m_summary.m_strike
+        opt2_strike = client.request_contract_details\
+                                  (ContractId(self.opt2_id)).m_summary.m_strike
+        return (self.option_expiry_val(opt1_right, spot, opt1_strike) 
+                - self.option_expiry_val(opt2_right, spot, opt2_strike))
+
 class SameSide(OptPair):
     def gen_contract(self):
         opt1 = {'m_conId': self.opt1_id, 'm_ratio': 1, 'm_action': 'BUY'}
@@ -65,6 +82,18 @@ class SameSide(OptPair):
         combo_args = {'m_comboLegs': legs}
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
+
+    def payoff_at_expiry(self, spot, client):
+        opt1_right = client.request_contract_details\
+                                   (ContractId(self.opt1_id)).m_summary.m_right
+        opt2_right = client.request_contract_details\
+                                   (ContractId(self.opt2_id)).m_summary.m_right
+        opt1_strike = client.request_contract_details\
+                                  (ContractId(self.opt1_id)).m_summary.m_strike
+        opt2_strike = client.request_contract_details\
+                                  (ContractId(self.opt2_id)).m_summary.m_strike
+        return (self.option_expiry_val(opt1_right, spot, opt1_strike) 
+                + self.option_expiry_val(opt2_right, spot, opt2_strike))
 
 # Combo classes
 class Box(OrderGen):
@@ -125,6 +154,30 @@ class Box(OrderGen):
             raise Exception("Synthetic strikes match")
         return True
 
+    def payoff_at_expiry(self, spot, client):
+        c1_strike = client.request_contract_details\
+                                 (ContractId(self.call1_id)).m_summary.m_strike
+        p1_strike = client.request_contract_details\
+                                  (ContractId(self.put1_id)).m_summary.m_strike
+        c2_strike = client.request_contract_details\
+                                 (ContractId(self.call2_id)).m_summary.m_strike
+        p2_strike = client.request_contract_details\
+                                  (ContractId(self.put2_id)).m_summary.m_strike
+        return (self.option_expiry_val('C', spot, c1_strike) 
+                - self.option_expiry_val('P', spot, p1_strike)
+                - self.option_expiry_val('C', spot, c2_strike)
+                + self.option_expiry_val('P', spot, p2_strike))
+
+    def max_payoff(self, client):
+        c1_strike = client.request_contract_details\
+                                 (ContractId(self.call1_id)).m_summary.m_strike
+        c2_strike = client.request_contract_details\
+                                 (ContractId(self.call2_id)).m_summary.m_strike
+        return c2_strike - c1_strike
+
+    def min_payoff(self, client):
+        return self.max_payoff()
+
 class Butterfly(OrderGen):
     def __init__(self, lwing_id,  body_id,  rwing_id):
         self.lwing_id, self.rwing_id = (lwing_id, rwing_id)
@@ -169,6 +222,33 @@ class Butterfly(OrderGen):
             raise Exception("Body strike not in between wings")
         return True
 
+    def payoff_at_expiry(self, spot, client):
+        l_right = client.request_contract_details\
+                                  (ContractId(self.lwing_id)).m_summary.m_right
+        b_right = client.request_contract_details\
+                                   (ContractId(self.body_id)).m_summary.m_right
+        r_right = client.request_contract_details\
+                                  (ContractId(self.rwing_id)).m_summary.m_right
+        l_strike = client.request_contract_details\
+                                 (ContractId(self.lwing_id)).m_summary.m_strike
+        b_strike = client.request_contract_details\
+                                  (ContractId(self.body_id)).m_summary.m_strike
+        r_strike = client.request_contract_details\
+                                 (ContractId(self.rwing_id)).m_summary.m_strike
+        return (self.option_expiry_val(l_right, spot, l_strike) 
+                - 2.0*self.option_expiry_val(b_right, spot, b_strike)
+                + self.option_expiry_val(r_right, spot, r_strike))
+
+    def max_payoff(self, client):
+        l_strike = client.request_contract_details\
+                                 (ContractId(self.lwing_id)).m_summary.m_strike
+        b_strike = client.request_contract_details\
+                                  (ContractId(self.body_id)).m_summary.m_strike
+        return b_strike - l_strike
+
+    def min_payoff(self, client):
+        return 0
+        
 class BuyWrite(OptUnder):
     def gen_conId(self):
         return 'BuyWrite_%i_%i' % (self.stk_id, self.opt_id)
@@ -198,6 +278,13 @@ class BuyWrite(OptUnder):
         if opt_con.m_symbol != stk_con.m_symbol:
             raise Exception("Option is on wrong underlying, or wrong Stock")
         return True
+
+    def payoff_at_expiry(self, spot, client):
+        opt_right = client.request_contract_details\
+                                    (ContractId(self.opt_id)).m_summary.m_right
+        opt_strike = client.request_contract_details\
+                                   (ContractId(self.opt_id)).m_summary.m_strike
+        return spot - self.option_expiry_val(opt_right, spot, opt_strike)
 
 class CalendarSpread(Spread):
     def gen_conId(self):
@@ -264,6 +351,12 @@ class Conversion(OrderGen):
         if put_con.m_symbol != stock_con.m_symbol:
             raise Exception("Put is on wrong underlying, or wrong Stock")
         return True
+
+    def payoff_at_expiry(self, spot, client):
+        strike = client.request_contract_details\
+                                  (ContractId(self.call_id)).m_summary.m_strike
+        return (spot + self.option_expiry_val('P', spot, strike)
+                - self.option_expiry_val('C', spot, strike))
 
 class DeltaNeutral(OrderGen):
     pass
@@ -375,6 +468,47 @@ class IronCondor(OrderGen):
             raise Exception("Strikes are wrong")
         return True
 
+    def payoff_at_expiry(self, spot, client):
+        wingcall_strike = client.request_contract_details\
+                              (ContractId(self.wingcall_id)).m_summary.m_strike
+        bodycall_strike = client.request_contract_details\
+                              (ContractId(self.bodycall_id)).m_summary.m_strike
+        bodyput_strike = client.request_contract_details\
+                               (ContractId(self.bodyput_id)).m_summary.m_strike
+        wingput_strike = client.request_contract_details\
+                               (ContractId(self.wingput_id)).m_summary.m_strike
+        return (self.option_expiry_val('C', spot, wingcall_strike) 
+                - self.option_expiry_val('C', spot, bodycall_strike)
+                - self.option_expiry_val('P', spot, bodyput_strike)
+                + self.option_expiry_val('P', spot, wingput_strike))
+
+    def max_payoff(self, client):
+        wingcall_strike = client.request_contract_details\
+                              (ContractId(self.wingcall_id)).m_summary.m_strike
+        bodycall_strike = client.request_contract_details\
+                              (ContractId(self.bodycall_id)).m_summary.m_strike
+        bodyput_strike = client.request_contract_details\
+                               (ContractId(self.bodyput_id)).m_summary.m_strike
+        wingput_strike = client.request_contract_details\
+                               (ContractId(self.wingput_id)).m_summary.m_strike
+        return 0 if bodycall_strike > bodyput_strike else (wingput_strike 
+                                                           - wingcall_strike 
+                                                           - bodyput_strike
+                                                           + bodycall_strike)
+
+    def min_payoff(self, client):
+        wingcall_strike = client.request_contract_details\
+                              (ContractId(self.wingcall_id)).m_summary.m_strike
+        bodycall_strike = client.request_contract_details\
+                              (ContractId(self.bodycall_id)).m_summary.m_strike
+        bodyput_strike = client.request_contract_details\
+                               (ContractId(self.bodyput_id)).m_summary.m_strike
+        wingput_strike = client.request_contract_details\
+                               (ContractId(self.wingput_id)).m_summary.m_strike
+        lpay = wingput_strike - bodyput_strike
+        rpay = bodycall_strike - wingcall_strike
+        return lpay if lpay < rpay else rpay
+
 class Reversal(Conversion):
     def __init__(self, call_id, stock_id, put_id):
         self.call_id, self.stock_id, self.put_id = (call_id, stock_id, put_id) 
@@ -397,6 +531,12 @@ class Reversal(Conversion):
         combo_args = {'m_comboLegs': legs}
         combo_args.update(COMBO_BASE)
         return Contract(**combo_args)
+
+    def payoff_at_expiry(self, spot, client):
+        strike = client.request_contract_details\
+                                  (ContractId(self.call_id)).m_summary.m_strike
+        return (self.option_expiry_val('C', spot, strike)
+                - spot - self.option_expiry_val('P', spot, strike))
 
 class RiskReversal(Spread):
     def gen_conId(self):
@@ -493,6 +633,13 @@ class StkOpt(OptUnder):
             raise Exception("Option is on wrong underlying, or wrong Stock")
         return True
 
+    def payoff_at_expiry(self, spot, client):
+        opt_right = client.request_contract_details\
+                                    (ContractId(self.opt_id)).m_summary.m_right
+        opt_strike = client.request_contract_details\
+                                   (ContractId(self.opt_id)).m_summary.m_strike
+        return spot + self.option_expiry_val(opt_right, spot, opt_strike)
+
 class Synthetic(Spread):
     def gen_conId(self):
         return 'Synthetic_%i_%i' % (self.opt1_id, self.opt2_id)
@@ -544,6 +691,11 @@ class SyntheticPut(OptUnder):
             raise Exception("Option is on wrong underlying, or wrong Stock")
         return True
 
+    def payoff_at_expiry(self, spot, client):
+        opt_strike = client.request_contract_details\
+                                   (ContractId(self.opt_id)).m_summary.m_strike
+        return spot - self.option_expiry_val('C', spot, opt_strike)
+
 class SyntheticCall(OptUnder):
     def gen_conId(self):
         return 'SyntheticCall_%i_%i' % (self.stk_id, self.opt_id)
@@ -573,6 +725,11 @@ class SyntheticCall(OptUnder):
         if opt_con.m_symbol != stk_con.m_symbol:
             raise Exception("Option is on wrong underlying, or wrong Stock")
         return True
+
+    def payoff_at_expiry(self, spot, client):
+        opt_strike = client.request_contract_details\
+                                   (ContractId(self.opt_id)).m_summary.m_strike
+        return spot + self.option_expiry_val('P', spot, opt_strike)
 
 class VerticalSpread(Spread):
     def gen_conId(self):
