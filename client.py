@@ -265,6 +265,8 @@ class CallbackBase():
         except KeyError:
             self.logger.error('Market data for %i has already been canceled', 
                               tickerId)
+        except TypeError:
+            self.datahandler(tickerId, ' '.join([dt, msg]))
         self.msghandler(msg)
 
     def tickSize(self, tickerId, field, size):
@@ -283,6 +285,8 @@ class CallbackBase():
         except KeyError:
             self.logger.error('Market data for %i has already been canceled', 
                               tickerId)
+        except TypeError:
+            self.datahandler(tickerId, ' '.join([dt, msg]))
         self.msghandler(msg)
 
     def tickOptionComputation(self, tickerId, field, impliedVol, delta, 
@@ -307,6 +311,8 @@ class CallbackBase():
         except KeyError:
             self.logger.error('Market data for %i has already been canceled', 
                               tickerId)
+        except TypeError:
+            self.datahandler(tickerId, ' '.join([dt, msg]))
         self.msghandler(msg)
 
     def tickGeneric(self, tickerId, tickType, value):
@@ -329,6 +335,8 @@ class CallbackBase():
         except KeyError:
             self.logger.error('Market data for %i has already been canceled', 
                               tickerId)
+        except TypeError:
+            self.datahandler(tickerId, ' '.join([dt, msg]))
         self.msghandler(msg)
 
     def tickEFP(self, tickerId, tickType, basisPoints, formattedBasisPoints, 
