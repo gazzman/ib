@@ -16,7 +16,7 @@ from com.ib.client import (EWrapper, EWrapperMsgGenerator, EClientSocket,
 from ib.contractkeys import (ContractId, Currency, CurrencyLocal,
                              Option, OptionLocal, Stock)
 
-LOGLEVEL = logging.DEBUG
+LOGLEVEL = logging.INFO
 CONKEYTYPES = [ContractId, Currency, CurrencyLocal, Option, OptionLocal, Stock]
 
 class CallbackBase():
@@ -72,9 +72,8 @@ class CallbackBase():
 
     def datahandler(self, req_id, datamsg):
         self.logger.debug('Received datapoint for req_id %i' % req_id)
-        fnm = self.data_req_fnames[req_id]
-        f = open(fnm, 'a') 
-        f.write('%s\n' % datamsg)
+        f = open(self.data_req_fnames[req_id], 'a')
+        f.write('%s %s\n' % (datetime.now().isoformat(), datamsg))
         f.close()
         self.logger.debug('Wrote datapoint for req_id %i to %s', req_id, fnm)
 
@@ -90,7 +89,6 @@ class CallbackBase():
 
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice, 
                     permId, parentId, lastFillPrice, clientId, whyHeld):
-
         if clientId not in self.orders: self.orders[clientId] = dict()
         self.orders[clientId][orderId] = {'status': status, 'filled': filled, 
                                           'remaining': remaining, 
@@ -228,7 +226,7 @@ class CallbackBase():
 
     def fundamentalData(self, reqId, data):
         msg = EWrapperMsgGenerator.fundamentalData(reqId, data)
-        self.datahandler(req_id, msg)
+        self.datahandler(reqId, msg)
 
     # Scanner callbacks
     def scannerParameters(self, xml):
@@ -248,96 +246,31 @@ class CallbackBase():
 
     # Market data Tick callbacks
     def tickPrice(self, tickerId, field, price, canAutoExecute):
-        dt = datetime.now().isoformat()
         msg = EWrapperMsgGenerator.tickPrice(tickerId, field, price, 
                                              canAutoExecute)
-        try:
-            con = self.request_contract_details(
-                              ContractId(self.mkt_data[tickerId][0])).m_summary
-
-            datarow = (dt, con.m_symbol, con.m_expiry, con.m_right, 
-                       con.m_strike, msg)
-            datarow = [str(x) for x in datarow]
-            datarow.append('\n')
-            f = open(self.mkt_data_filename, 'a')
-            f.write(' '.join(datarow))
-            f.close()
-        except KeyError:
-            self.logger.error('Market data for %i has already been canceled', 
-                              tickerId)
-        except TypeError:
-            self.datahandler(tickerId, ' '.join([dt, msg]))
-        self.msghandler(msg)
+        self.datahandler(tickerId, msg)
 
     def tickSize(self, tickerId, field, size):
-        dt = datetime.now().isoformat()
         msg = EWrapperMsgGenerator.tickSize(tickerId, field, size)
-        try:
-            con = self.request_contract_details(
-                              ContractId(self.mkt_data[tickerId][0])).m_summary
-            datarow = (dt, con.m_symbol, con.m_expiry, con.m_right, 
-                       con.m_strike, msg)
-            datarow = [str(x) for x in datarow]
-            datarow.append('\n')
-            f = open(self.mkt_data_filename, 'a')
-            f.write(' '.join(datarow))
-            f.close()
-        except KeyError:
-            self.logger.error('Market data for %i has already been canceled', 
-                              tickerId)
-        except TypeError:
-            self.datahandler(tickerId, ' '.join([dt, msg]))
-        self.msghandler(msg)
+        self.datahandler(tickerId, msg)
 
     def tickOptionComputation(self, tickerId, field, impliedVol, delta, 
                               optPrice, pvDividend, gamma, vega, theta, 
                               undPrice):
-        dt = datetime.now().isoformat()
         msg = EWrapperMsgGenerator.tickOptionComputation(tickerId, field, 
                                                          impliedVol, delta, 
                                                          optPrice, pvDividend, 
                                                          gamma, vega, theta, 
                                                          undPrice)
-        try:
-            con = self.request_contract_details(
-                              ContractId(self.mkt_data[tickerId][0])).m_summary
-            datarow = (dt, con.m_symbol, con.m_expiry, con.m_right, 
-                       con.m_strike, msg)
-            datarow = [str(x) for x in datarow]
-            datarow.append('\n')
-            f = open(self.mkt_data_filename, 'a')
-            f.write(' '.join(datarow))
-            f.close()
-        except KeyError:
-            self.logger.error('Market data for %i has already been canceled', 
-                              tickerId)
-        except TypeError:
-            self.datahandler(tickerId, ' '.join([dt, msg]))
-        self.msghandler(msg)
+        self.datahandler(tickerId, msg)
 
     def tickGeneric(self, tickerId, tickType, value):
         msg = EWrapperMsgGenerator.tickGeneric(tickerId, tickType, value)
-        self.msghandler('tickGen: ' + msg)
+        self.datahandler(tickerId, msg)
 
     def tickString(self, tickerId, tickType, value):
-        dt = datetime.now().isoformat()
         msg = EWrapperMsgGenerator.tickString(tickerId, tickType, value)
-        try:
-            con = self.request_contract_details(
-                              ContractId(self.mkt_data[tickerId][0])).m_summary
-            datarow = (dt, con.m_symbol, con.m_expiry, con.m_right, 
-                       con.m_strike, msg)
-            datarow = [str(x) for x in datarow]
-            datarow.append('\n')
-            f = open(self.mkt_data_filename, 'a')
-            f.write(' '.join(datarow))
-            f.close()
-        except KeyError:
-            self.logger.error('Market data for %i has already been canceled', 
-                              tickerId)
-        except TypeError:
-            self.datahandler(tickerId, ' '.join([dt, msg]))
-        self.msghandler(msg)
+        self.datahandler(tickerId, msg)
 
     def tickEFP(self, tickerId, tickType, basisPoints, formattedBasisPoints, 
                 impliedFuture, holdDays, futureExpiry, dividendImpact, 
@@ -346,7 +279,7 @@ class CallbackBase():
                                            formattedBasisPoints, impliedFuture, 
                                            holdDays, futureExpiry, 
                                            dividendImpact, dividendsToExpiry) 
-        self.msghandler('tickEFP: ' + msg)
+        self.datahandler(tickerId, msg)
 
     def deltaNeutralValidation(self, reqId, underComp):
         msg = EWrapperMsgGenerator.deltaNeutralValidation(reqId, underComp)
@@ -363,7 +296,6 @@ class CallbackBase():
         self.msghandler('marketDataType: ' + msg, req_id=reqId)
 
 class Client(CallbackBase, EWrapper):
-    mkt_data_filename = None
     cached_cds = dict()
     id_to_cd = dict()
     stk_base = {'m_secType': 'STK', 'm_exchange': 'SMART', 'm_currency': 'USD'}
@@ -422,9 +354,6 @@ class Client(CallbackBase, EWrapper):
     # Request data methods
     def request_mkt_data(self, contract, gtick_list='', snapshot=True,
                          fname=None):
-        if not self.mkt_data_filename: 
-            self.mkt_data_filename = 'MKTDATA_%s.txt' % datetime.now().date()\
-                                                                   .isoformat()
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
         if not fname: fname = 'MKT_%i_%s.txt' % (contract.m_conId, gtick_list)
