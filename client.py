@@ -72,7 +72,8 @@ class CallbackBase():
 
     def datahandler(self, req_id, datamsg):
         self.logger.debug('Received datapoint for req_id %i' % req_id)
-        f = open(self.data_req_fnames[req_id], 'a')
+        fnm = self.data_req_fnames[req_id]
+        f = open(fnm, 'a')
         f.write('%s %s\n' % (datetime.now().isoformat(), datamsg))
         f.close()
         self.logger.debug('Wrote datapoint for req_id %i to %s', req_id, fnm)
