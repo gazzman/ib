@@ -17,7 +17,8 @@ from ib.contractkeys import (ContractId, Currency, CurrencyLocal,
                              Option, OptionLocal, Stock)
 
 LOGLEVEL = logging.INFO
-CONKEYTYPES = [ContractId, Currency, CurrencyLocal, Option, OptionLocal, Stock]
+CONKEYTYPES = [str(x) for x in (ContractId, Currency, CurrencyLocal, Option, 
+                                OptionLocal, Stock)]
 
 class CallbackBase():
     realtime_bars = dict()
@@ -331,8 +332,8 @@ class Client(CallbackBase, EWrapper):
     def request_contract_details(self, key):
         if key not in self.cached_cds: 
             args = key._asdict()
-            if type(key) == ContractId and key[0] in self.id_to_cd: 
-                return self.id_to_cd[key[0]]
+            if type(key) == ContractId:
+                if key[0] in self.id_to_cd: return [self.id_to_cd[key[0]]]
             elif type(key) in (Currency, CurrencyLocal):
                 args.update(self.fx_base)
             elif type(key) in (Option, OptionLocal): 
