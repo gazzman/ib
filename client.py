@@ -8,6 +8,7 @@ from time import sleep
 from logging.handlers import TimedRotatingFileHandler
 import java.io.EOFException
 import logging
+import pickle
 import sys
 
 from com.ib.client import (EWrapper, EWrapperMsgGenerator, EClientSocket,
@@ -328,6 +329,11 @@ class Client(CallbackBase, EWrapper):
     def disconnect(self):
         self.m_client.eDisconnect()
         self.logger.info('Client disconnected')
+        id_to_localSymbol = dict()        
+        for cid in self.id_to_cd:
+            id_to_localSymbol[cid] = self.id_to_cd[cid].m_summary.m_localSymbol
+        fnm = 'id_to_localSymbol_%s.pkl' % datetime.now().isoformat()
+        pickle.dump(id_to_localSymbol, open(fnm, 'w'))
 
     def request_contract_details(self, key):
         if key not in self.cached_cds: 
