@@ -11,7 +11,7 @@ from ib.contractkeys import ContractId
 
 pattern = './Butterfly*.mkt'
 newdirname = '%(symbol)s_%(expiry)s_%(right)s'
-newfilename = '%(strike1)0.1f_%(strike2)0.1f_%(strike3)0.1f.mkt'
+newfilename = '%(strike1)06.2f_%(strike2)06.2f_%(strike3)06.2f.mkt'
 
 if __name__ == "__main__":
     c = Client(client_id=8)
