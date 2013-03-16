@@ -13,7 +13,6 @@ import sys
 
 from ib.client import Client
 from ib.contractkeys import CurrencyLocal, Stock, OptionLocal
-import ib.combo_orders as co
 
 DTFMT = '%Y%m%d %H:%M:%S' 
 
