@@ -358,7 +358,9 @@ class Client(CallbackBase, EWrapper):
             contract = Contract(**args)
             self.req_id += 1
             self.m_client.reqContractDetails(self.req_id, contract)
-            while self.req_id not in self.fulfilled_contracts: sleep(.5)
+            while self.req_id not in (self.failed_contracts.keys() + 
+                                      self.fulfilled_contracts.keys()): sleep(.5)
+            if self.req_id in self.failed_contracts: return None
             self.cached_cds[key] = self.req_cds[self.req_id]
             for cd in self.req_cds[self.req_id]: 
                 self.id_to_cd[cd.m_summary.m_conId] = cd
