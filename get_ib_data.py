@@ -61,7 +61,7 @@ if __name__ == "__main__":
         raise Exception('Unknown symbol format: %s' % ' '.join(symbol))
 
     if not args.outfile:
-        args.outfile = '%s_%s.txt' % (args.show, symbol)
+        args.outfile = '%s_%s_%s.txt' % (args.show, args.bar_size, symbol)
 
     c = Client(client_id=72)
     c.connect()
