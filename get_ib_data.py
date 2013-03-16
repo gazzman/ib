@@ -47,25 +47,34 @@ if __name__ == "__main__":
 
     args = p.parse_args()
     symbol = [x.upper() for x in args.symbol]
-    if not args.outfile:
-        args.outfile = '%s_%s.txt' % (args.show, ''.join(symbol))
 
     if len(symbol) == 1:
+        symbol = symbol[0]
         if re.match('CAD|CHF|EUR|GBP|USD.[A-Z]{3}', symbol[0]):
-            conkey = CurrencyLocal(symbol[0])
+            conkey = CurrencyLocal(symbol)
         else:
-            conkey = Stock(symbol[0])
+            conkey = Stock(symbol)
     elif re.match('[0-9]{6}[CP][0-9]{8}', symbol[1]):
-        optid = (' '*(6 - len(symbol[0]))).join(symbol)
-        conkey = OptionLocal(optid)
+        symbol = (' '*(6 - len(symbol[0]))).join(symbol)
+        conkey = OptionLocal(symbol)
     else:
         raise Exception('Unknown symbol format: %s' % ' '.join(symbol))
+
+    if not args.outfile:
+        args.outfile = '%s_%s.txt' % (args.show, symbol)
 
     c = Client(client_id=72)
     c.connect()
 
-    details = c.request_contract_details(conkey)[0]
-    contract = details.m_summary
+    details = c.request_contract_details(conkey)
+    try:
+        if len(details) != 1: 
+            c.disconnect()
+            raise Exception('More than one contract found')
+    except TypeError:
+        c.disconnect()
+        raise Exception('No contract found for this symbol')
+    contract = details[0].m_summary
 
     req_id = c.request_historical_data(contract, end_time=args.end_time, 
                                        duration=args.duration, 
