@@ -72,13 +72,18 @@ class CallbackBase():
             self.satisfied_requests[req_id] = datetime.now()
         self.logger.info(msg)
 
-    def datahandler(self, req_id, datamsg):
+    def datahandler(self, req_id, datamsg, finish_indicator=None):
         self.logger.debug('Received datapoint for req_id %i' % req_id)
         fnm = self.data_req_fnames[req_id]
         f = open(fnm, 'a')
         f.write('%s %s\n' % (datetime.now().isoformat(), datamsg))
         f.close()
         self.logger.debug('Wrote datapoint for req_id %i to %s', req_id, fnm)
+        if finish_indicator:
+            if 'finished' in finish_indicator:
+                self.satisfied_requests[req_id] = datetime.now()
+                self.logger.info('Historical data request %s stored in %s',
+                                 req_id, fnm)
 
     def currentTime(self, time):
         msg = EWrapperMsgGenerator.currentTime(time)
@@ -219,7 +224,7 @@ class CallbackBase():
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        self.datahandler(reqId, msg)
+        self.datahandler(reqId, msg, date)
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
                     count):
