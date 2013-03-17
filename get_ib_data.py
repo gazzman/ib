@@ -12,9 +12,10 @@ import re
 import sys
 
 from ib.client import Client
-from ib.contractkeys import CurrencyLocal, Stock, OptionLocal
+from ib.contractkeys import CurrencyLocal, Index, Stock, OptionLocal
 
 DTFMT = '%Y%m%d %H:%M:%S' 
+INDICES = {'DWCF': 'AMEX', 'SPX': 'CBOE'}
 
 if __name__ == "__main__":
     description = 'Pull historical contract data from Interactive Brokers.\n'
@@ -57,6 +58,9 @@ if __name__ == "__main__":
     elif re.match('[0-9]{6}[CP][0-9]{8}', symbol[1]):
         symbol = (' '*(6 - len(symbol[0]))).join(symbol)
         conkey = OptionLocal(symbol)
+    elif re.match('[A-Z]{1,6} [A-Z]{4,5}', ' '.join(symbol)):
+        conkey = Index(symbol[0], symbol[1])
+        symbol = symbol[0]
     else:
         raise Exception('Unknown symbol format: %s' % ' '.join(symbol))
 
