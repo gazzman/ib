@@ -26,7 +26,15 @@ if __name__ == "__main__":
 
     end_time_help = DTFMT.replace('%', '%%')
     duration_help = '<integer> <unit>, unit is either S, D, W, M, Y.'
+    bar_size_help = 'either 1 secs, 5 secs, 10 secs, 15 secs, 30 secs, 1 min, '
+    bar_size_help += '2 mins, 3 mins, 5 mins, 10 mins, 15 mins, 20 mins, '
+    bar_size_help += '30 mins, 1 hour, 2 hours, 3 hours, 4 hours, 8 hours, '
+    bar_size_help += '1 day, 1 week, 1 month'
+    show_help = 'TRADES, MIDPOINT, BID, ASK, BID_ASK, ' 
+    show_help += 'HISTORICAL_VOLATILITY, OPTION_IMPLIED_VOLATILITY, ' 
+    show_help += 'OPTION_VOLUME, OPTION_OPEN_INTEREST'
     outfile_help = 'name of file in which to store data'
+
     bar_sizes = ['1 secs', '5 secs', '10 secs', '15 secs', '30 secs', '1 min', 
                  '2 mins', '3 mins', '5 mins', '10 mins', '15 mins', '20 mins',
                  '30 mins', '1 hour', '2 hours', '3 hours', '4 hours',
@@ -39,18 +47,18 @@ if __name__ == "__main__":
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
     p.add_argument('-v', '--version', action='version', 
                    version='%(prog)s ' + __version__)
-    p.add_argument('--end_time', help=end_time_help)
-    p.add_argument('--duration', help=duration_help, default='1 D')
-    p.add_argument('--bar_size', choices=bar_sizes, default='1 min')
-    p.add_argument('--show', choices=shows, default='TRADES')
-    p.add_argument('--outfile', help=outfile_help)
+    p.add_argument('--end_time', help=end_time_help, nargs='+')
+    p.add_argument('--duration', help=duration_help, nargs='+')
+    p.add_argument('--bar_size', help=bar_size_help, nargs='+', default=['1', 'min'])
+    p.add_argument('--show', help=show_help, default='TRADES')
+    p.add_argument('--fname', help=outfile_help)
 
     args = p.parse_args()
     symbol = [x.upper() for x in args.symbol]
 
     if len(symbol) == 1:
         symbol = symbol[0]
-        if re.match('CAD|CHF|EUR|GBP|USD.[A-Z]{3}', symbol[0]):
+        if re.match('(CAD|CHF|EUR|GBP|USD)\.[A-Z]{3}', symbol):
             conkey = CurrencyLocal(symbol)
         else:
             conkey = Stock(symbol)
@@ -60,8 +68,15 @@ if __name__ == "__main__":
     else:
         raise Exception('Unknown symbol format: %s' % ' '.join(symbol))
 
-    if not args.outfile:
-        args.outfile = '%s_%s_%s.txt' % (args.show, args.bar_size, symbol)
+    if args.end_time: args.end_time = ' '.join(args.end_time)
+    if args.duration: args.duration = ' '.join(args.duration)
+    if args.bar_size: args.bar_size = ' '.join(args.bar_size)
+
+    if not args.fname:
+        args.fname = '%s_%s_%s.txt' % (args.show, args.bar_size, symbol)
+    
+    req_args = dict([x for x in args._get_kwargs() if x[1]])
+    del req_args['symbol']
 
     c = Client(client_id=72)
     c.connect()
@@ -76,10 +91,7 @@ if __name__ == "__main__":
         raise Exception('No contract found for this symbol')
     contract = details[0].m_summary
 
-    req_id = c.request_historical_data(contract, end_time=args.end_time, 
-                                       duration=args.duration, 
-                                       bar_size=args.bar_size,
-                                       show=args.show, fname=args.outfile)
+    req_id = c.request_historical_data(contract, **req_args)
     while req_id not in c.satisfied_requests.keys() + c.req_errs.keys():
         sleep(.25)
 
