@@ -14,7 +14,7 @@ import sys
 from com.ib.client import (EWrapper, EWrapperMsgGenerator, EClientSocket,
                            Contract, ExecutionFilter, TickType)
 
-from ib.contractkeys import (ContractId, Currency, CurrencyLocal,
+from ib.contractkeys import (ContractId, Currency, CurrencyLocal, Index,
                              Option, OptionLocal, Stock)
 
 LOGLEVEL = logging.INFO
@@ -311,6 +311,7 @@ class Client(CallbackBase, EWrapper):
     id_to_cd = dict()
     stk_base = {'m_secType': 'STK', 'm_exchange': 'SMART', 'm_currency': 'USD'}
     opt_base = {'m_secType': 'OPT', 'm_exchange': 'SMART', 'm_currency': 'USD'}
+    ind_base = {'m_secType': 'IND', 'm_currency': 'USD'}
     fx_base = {'m_secType': 'CASH'}
 
     def __init__(self, client_id=9):
@@ -350,6 +351,8 @@ class Client(CallbackBase, EWrapper):
                 if key[0] in self.id_to_cd: return [self.id_to_cd[key[0]]]
             elif type(key) in (Currency, CurrencyLocal):
                 args.update(self.fx_base)
+            elif type(key) == Index: 
+                args.update(self.ind_base)
             elif type(key) in (Option, OptionLocal): 
                 args.update(self.opt_base)
             elif type(key) == Stock: 
