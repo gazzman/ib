@@ -35,14 +35,6 @@ if __name__ == "__main__":
     show_help += 'OPTION_VOLUME, OPTION_OPEN_INTEREST'
     outfile_help = 'name of file in which to store data'
 
-    bar_sizes = ['1 secs', '5 secs', '10 secs', '15 secs', '30 secs', '1 min', 
-                 '2 mins', '3 mins', '5 mins', '10 mins', '15 mins', '20 mins',
-                 '30 mins', '1 hour', '2 hours', '3 hours', '4 hours',
-                 '8 hours', '1 day', '1 week', '1 month']
-    shows = ['TRADES', 'MIDPOINT', 'BID', 'ASK', 'BID_ASK', 
-             'HISTORICAL_VOLATILITY', 'OPTION_IMPLIED_VOLATILITY', 
-             'OPTION_VOLUME', 'OPTION_OPEN_INTEREST']
-
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
     p.add_argument('-v', '--version', action='version', 
