@@ -56,6 +56,9 @@ class CallbackBase():
             elif err_code == 200: self.logger.warn(errmsg) # no contract
             elif err_code == 202: self.logger.info(errmsg) # cancel order
             elif err_code == 399: self.logger.warn(errmsg) # after-hours
+            elif err_code == 502:
+                self.logger.warn(errmsg) # no connection
+                raise Exception('%s | %s | %s' % (req_id, err_code, err_msg))
             elif err_code < 1100: self.logger.error(errmsg)
             elif err_code < 2100: self.logger.critical(errmsg)
             else: self.logger.warn(errmsg)
