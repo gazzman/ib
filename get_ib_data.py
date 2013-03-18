@@ -15,7 +15,21 @@ from ib.client import Client
 from ib.contractkeys import CurrencyLocal, Index, Stock, OptionLocal
 
 DTFMT = '%Y%m%d %H:%M:%S' 
-INDICES = {'DWCF': 'AMEX', 'SPX': 'CBOE'}
+
+def conkey_generator(symbol):
+    if len(symbol) == 1:
+        symbol = symbol[0]
+        if re.match('(CAD|CHF|EUR|GBP|USD)\.[A-Z]{3}', symbol):
+            return symbol, CurrencyLocal(symbol)
+        else:
+            return symbol, Stock(symbol)
+    elif re.match('[0-9]{6}[CP][0-9]{8}', symbol[1]):
+        symbol = (' '*(6 - len(symbol[0]))).join(symbol)
+        return symbol, OptionLocal(symbol)
+    elif re.match('[A-Z]{1,6} [A-Z]{4,5}', ' '.join(symbol)):
+        return symbol[0], Index(symbol[0], symbol[1])
+    else:
+        c.logger.error('Unknown symbol format: %s', ' '.join(symbol))
 
 if __name__ == "__main__":
     description = 'Pull historical contract data from Interactive Brokers.\n'
@@ -48,21 +62,7 @@ if __name__ == "__main__":
 
     args = p.parse_args()
     symbol = [x.upper() for x in args.symbol]
-
-    if len(symbol) == 1:
-        symbol = symbol[0]
-        if re.match('(CAD|CHF|EUR|GBP|USD)\.[A-Z]{3}', symbol):
-            conkey = CurrencyLocal(symbol)
-        else:
-            conkey = Stock(symbol)
-    elif re.match('[0-9]{6}[CP][0-9]{8}', symbol[1]):
-        symbol = (' '*(6 - len(symbol[0]))).join(symbol)
-        conkey = OptionLocal(symbol)
-    elif re.match('[A-Z]{1,6} [A-Z]{4,5}', ' '.join(symbol)):
-        conkey = Index(symbol[0], symbol[1])
-        symbol = symbol[0]
-    else:
-        raise Exception('Unknown symbol format: %s' % ' '.join(symbol))
+    symbol, conkey = conkey_generator(symbol)
 
     if args.end_time: args.end_time = ' '.join(args.end_time)
     if args.duration: args.duration = ' '.join(args.duration)
