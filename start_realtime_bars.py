@@ -84,8 +84,8 @@ if __name__ == "__main__":
             else:
                 contract = details[0].m_summary
                 req_id = c.start_realtime_bars(contract, show=show)
-                timemod.sleep(10)
                 fnames[req_id] = '%s_%s_%s.txt' % (show, '5 secs', symbol)
+                timemod.sleep(10)
         except TypeError:
             c.logger.error('No contract found for %s', symbol)
 
