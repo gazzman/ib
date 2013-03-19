@@ -384,13 +384,16 @@ class Client(CallbackBase, EWrapper):
         return self.req_id
 
     def start_realtime_bars(self, contract, show='TRADES', fname=None):
-        if self.too_many_requests(): return None
+        if self.too_many_requests():
+            self.logger.error('Too many requests.')
+            return None
         self.req_id += 1
         self.data_requests[self.req_id] = datetime.now()
         self.realtime_bars[self.req_id] = (contract.m_conId, show)
         if not fname: fname = 'RTBARS_%i_%s.txt' % (contract.m_conId, show)
         self.data_req_fnames[self.req_id] = fname
         self.m_client.reqRealTimeBars(self.req_id, contract, 5, show, 0)
+        self.logger.info('Realtime bars started for req_id %i', self.req_id)
         return self.req_id
 
     def request_historical_data(self, contract, end_time=None, duration='1 D',
