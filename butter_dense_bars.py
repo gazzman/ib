@@ -84,7 +84,7 @@ class BDClient(Client):
         self.bars[(strike, right, show)] = (timestamp, open_, high, low, close, 
                                             volume, wap, count)
 
-        if strike == -1:
+        if strike == -1 and show == 'BID':
             self.gen_strikes(close, self.interval)
 
         self.l = [self.bars[x][0] for x in self.show_req.values()]
