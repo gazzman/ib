@@ -27,8 +27,6 @@ class HistBarsClient(Client):
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        timestamp = timemod.strftime(DTFMT, timemod.localtime(date))
-        msg = msg.replace(str(date), timestamp)
         if not args.port:
             print >> sys.stderr, msg
         else:
