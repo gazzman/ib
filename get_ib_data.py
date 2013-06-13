@@ -86,9 +86,9 @@ if __name__ == "__main__":
     dbcommon = 'when writing directly to database'
     dbhelp = 'name of the database %s' % dbcommon
     schemahelp = 'name of the schema %s' % dbcommon
-    hosthelp = ('name of the host on which the ib_rtbars_server is running %s'
+    hosthelp = ('name of the host on which the ib_bars_server is running %s'
                 % dbcommon)
-    porthelp = ('name of the port the ib_rtbars_server is listening on %s'               
+    porthelp = ('name of the port the ib_bars_server is listening on %s'               
                 % dbcommon)
 
     p = argparse.ArgumentParser(description=description)
