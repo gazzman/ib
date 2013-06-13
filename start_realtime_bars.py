@@ -39,7 +39,7 @@ def cleanup(signal, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
-    description = 'Start Interactive Brokers realtime bars.'
+    description = 'Start Interactive Brokers realtime bars. '
     description += 'Currently supports equities, equity options, '
     description += 'indexes, and forex.'
 
@@ -53,14 +53,22 @@ if __name__ == "__main__":
     symbolsfile_help += '%s %s %s %s' % (eq_help, eqop_help, index_help, 
                                                              forex_help)
 
+    dbcommon = 'when writing directly to database'
+    dbhelp = 'name of the database %s' % dbcommon
+    schemahelp = 'name of the schema %s' % dbcommon
+    hosthelp = ('name of the host on which the ib_rtbars_server is running %s'
+                % dbcommon)
+    porthelp = ('name of the port the ib_rtbars_server is listening on %s'               
+                % dbcommon)
+
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbolsfile', type=str, help=symbolsfile_help)
     p.add_argument('-v', '--version', action='version', 
                    version='%(prog)s ' + __version__)
-    p.add_argument('--database', default='database')
-    p.add_argument('--schema', default='public')
-    p.add_argument('--host', default='localhost')
-    p.add_argument('--port', type=int)
+    p.add_argument('--database', default='database', help=dbhelp)
+    p.add_argument('--schema', default='public', help=schemahelp)
+    p.add_argument('--host', default='localhost', help=hosthelp)
+    p.add_argument('--port', type=int, help=porthelp)
 
     args = p.parse_args()
 
