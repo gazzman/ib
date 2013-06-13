@@ -121,6 +121,10 @@ if __name__ == "__main__":
     
     req_args = dict([x for x in args._get_kwargs() if x[1]])
     del req_args['symbol']
+    del req_args['database']
+    del req_args['schema']
+    del req_args['host']
+    del req_args['port']
 
     c = HistBarsClient(client_id=72)
     c.connect()
