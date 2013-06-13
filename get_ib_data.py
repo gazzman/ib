@@ -27,14 +27,19 @@ class HistBarsClient(Client):
         msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                   low, close, volume, count, 
                                                   WAP, hasGaps)
-        if not args.port:
+        if not args.port and not args.fname:
             print >> sys.stderr, msg
         else:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((args.host, args.port))
-            sock.sendall('%s,%s,%s,0 %s\n' % (args.database, args.schema, 
-                                              fnames[reqId], msg))
-            sock.close()
+            if args.port is not None:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((args.host, args.port))
+                sock.sendall('%s,%s,%s,0 %s\n' % (args.database, args.schema, 
+                                                  show_size_symbol, msg))
+                sock.close()
+            if args.fname is not None:
+                f = open(args.fname, 'a')
+                f.write('%s %s\n' % (datetime.now().isoformat(), msg))
+                f.close()
 
         if 'finished' in date:
             self.satisfied_requests[req_id] = datetime.now()
@@ -114,9 +119,8 @@ if __name__ == "__main__":
     if args.duration: args.duration = ' '.join(args.duration)
     if args.bar_size: args.bar_size = ' '.join(args.bar_size)
 
-    if not args.fname:
-        args.fname = '%s_%s_%s.txt' % (args.show, args.bar_size, symbol)
-    
+    show_size_symbol = '%s_%s_%s' % (args.show, args.bar_size, symbol)
+
     req_args = dict([x for x in args._get_kwargs() if x[1]])
     for k in  ['symbol', 'database', 'schema', 'host', 'port']:
         if k in req_args: del req_args[k]
