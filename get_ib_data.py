@@ -33,11 +33,13 @@ def conkey_generator(symbol):
 
 if __name__ == "__main__":
     description = 'Pull historical contract data from Interactive Brokers.\n'
-    description += 'Currently supports equities, equity options, and forex.'
+    description += 'Currently supports '
+    description += 'indexes, equities, equity options, and forex.'
+    idx_help = 'For indexes, the format is "symbol exchange", eg. SPX CBOE.' 
     eq_help = 'For equities, enter the ticker symbol, eg. AA.'
     eqop_help = 'For equity options, enter the 21 character OSI code.'
     forex_help = 'For forex, the format is base.price, eg. EUR.USD.' 
-    symbol_help = '%s\n%s\n%s' % (eq_help, eqop_help, forex_help)
+    symbol_help = '%s\n%s\n%s\n%s' % (idx_help, eq_help, eqop_help, forex_help)
 
     end_time_help = DTFMT.replace('%', '%%')
     duration_help = '<integer> <unit>, unit is either S, D, W, M, Y.'
