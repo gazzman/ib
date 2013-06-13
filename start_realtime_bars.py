@@ -20,14 +20,16 @@ class RTBarsClient(Client):
                                                close, volume, wap, count)
         timestamp = timemod.strftime('%Y%m%d %H:%M:%S', 
                                      timemod.localtime(time))
-        msg = msg.replace(str(time), timestamp)
         if not args.port:
             print >> sys.stderr, msg
         else:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((args.host, args.port))
-            sock.sendall('%s,%s,%s,0 %s\n' % (args.database, args.schema, 
-                                              fnames[reqId], msg))
+            sock.sendall('%s,%s,%s,0 %s\n' % (args.database, 
+                                              args.schema, 
+                                              fnames[reqId], 
+                                              msg.replace(str(time), 
+                                                          timestamp)))
             sock.close()
 
 def cleanup(signal, frame):
