@@ -9,12 +9,44 @@ import argparse
 import csv
 import logging
 import re
+import signal
+import socket
 import sys
+import time as timemod
+
+from com.ib.client import EWrapperMsgGenerator
 
 from ib.client import Client
 from ib.contractkeys import CurrencyLocal, Index, Stock, OptionLocal
 
 DTFMT = '%Y%m%d %H:%M:%S' 
+
+class HistBarsClient(Client):
+    def historicalData(self, reqId, date, open_, high, low, close, volume, 
+                       count, WAP, hasGaps):
+        msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
+                                                  low, close, volume, count, 
+                                                  WAP, hasGaps)
+        timestamp = timemod.strftime(DTFMT, timemod.localtime(date))
+        msg = msg.replace(str(date), timestamp)
+        if not args.port:
+            print >> sys.stderr, msg
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((args.host, args.port))
+            sock.sendall('%s,%s,%s,0 %s\n' % (args.database, args.schema, 
+                                              fnames[reqId], msg))
+            sock.close()
+
+        if 'finished' in date:
+            self.satisfied_requests[req_id] = datetime.now()
+            self.logger.info('Historical data request %s finished', req_id)
+
+def cleanup(signal, frame):
+    c.cancel_all_realtime_bars()
+    print >> sys.stderr, "Historical bars stopped."
+    c.disconnect()
+    sys.exit(0)
 
 def conkey_generator(symbol):
     if len(symbol) == 1:
@@ -35,6 +67,7 @@ if __name__ == "__main__":
     description = 'Pull historical contract data from Interactive Brokers.\n'
     description += 'Currently supports '
     description += 'indexes, equities, equity options, and forex.'
+
     idx_help = 'For indexes, the format is "symbol exchange", eg. SPX CBOE.' 
     eq_help = 'For equities, enter the ticker symbol, eg. AA.'
     eqop_help = 'For equity options, enter the 21 character OSI code.'
@@ -52,6 +85,14 @@ if __name__ == "__main__":
     show_help += 'OPTION_VOLUME, OPTION_OPEN_INTEREST'
     outfile_help = 'name of file in which to store data'
 
+    dbcommon = 'when writing directly to database'
+    dbhelp = 'name of the database %s' % dbcommon
+    schemahelp = 'name of the schema %s' % dbcommon
+    hosthelp = ('name of the host on which the ib_rtbars_server is running %s'
+                % dbcommon)
+    porthelp = ('name of the port the ib_rtbars_server is listening on %s'               
+                % dbcommon)
+
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
     p.add_argument('-v', '--version', action='version', 
@@ -61,6 +102,11 @@ if __name__ == "__main__":
     p.add_argument('--bar_size', help=bar_size_help, nargs='+', default=['1', 'min'])
     p.add_argument('--show', help=show_help, default='TRADES')
     p.add_argument('--fname', help=outfile_help)
+
+    p.add_argument('--database', default='database', help=dbhelp)
+    p.add_argument('--schema', default='public', help=schemahelp)
+    p.add_argument('--host', default='localhost', help=hosthelp)
+    p.add_argument('--port', type=int, help=porthelp)
 
     args = p.parse_args()
     symbol = [x.upper() for x in args.symbol]
@@ -76,7 +122,7 @@ if __name__ == "__main__":
     req_args = dict([x for x in args._get_kwargs() if x[1]])
     del req_args['symbol']
 
-    c = Client(client_id=72)
+    c = HistBarsClient(client_id=72)
     c.connect()
 
     details = c.request_contract_details(conkey)
