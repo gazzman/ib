@@ -120,11 +120,8 @@ if __name__ == "__main__":
         args.fname = '%s_%s_%s.txt' % (args.show, args.bar_size, symbol)
     
     req_args = dict([x for x in args._get_kwargs() if x[1]])
-    del req_args['symbol']
-    del req_args['database']
-    del req_args['schema']
-    del req_args['host']
-    del req_args['port']
+    for k in  ['symbol', 'database', 'schema', 'host', 'port']:
+        if k in req_args: del req_args[k]
 
     c = HistBarsClient(client_id=72)
     c.connect()
