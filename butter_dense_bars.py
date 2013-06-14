@@ -144,6 +144,7 @@ if __name__ == "__main__":
     description += ' the current spot price.'
 
     default_cid = 82
+    default_api_port = 7496
     symbol_help = 'The underlying ticker symbol.'
     start_bid_help = 'The initial starting bid for determining the'
     start_bid_help += ' starting butterfly body strikes.'
@@ -160,6 +161,7 @@ if __name__ == "__main__":
     buffer_help += ' adjacent body strike. Should be increased if the spot'
     buffer_help += ' is very volatile. Default is %i' % BDClient.BUFFER
     client_id_help = 'TWS client id. Default is %i' % default_cid
+    api_port_help = 'TWS API port. Default is %i' % default_api_port
     host_help = 'Default is localhost'
     tablename_help = 'Default is butterfly_chains_[expiry]'
 
@@ -178,6 +180,8 @@ if __name__ == "__main__":
                     help=buffer_help)
     ds.add_argument('--client_id', type=int, default=default_cid,
                     help=client_id_help)
+    ds.add_argument('--api_port', type=int, default=default_api_port,
+                    help=api_port_help)
 
     db = p.add_argument_group('Database Settings')
     db.add_argument('--database')
@@ -207,7 +211,7 @@ if __name__ == "__main__":
     c.host = args.host
     c.port = args.port
     c.interval = args.interval
-    c.connect()
+    c.connect(port=args.api_port)
 
     # Start bars for the underlying
     undercon = c.request_contract_details(Stock(c.symbol))[0].m_summary
