@@ -30,7 +30,7 @@ class BDClient(Client):
     strikes = []
     symbol = str()
     osi_underlying = str()
-    
+
     def compute_fly_prices(self):
         butter_strikes = self.strikes[self.BUFFER:-self.BUFFER]
         flies = ()
@@ -53,7 +53,7 @@ class BDClient(Client):
                 flies += (bid, ask)
         return flies
 
-    def gen_fields(self):    
+    def gen_fields(self):
         pids = range(0, self.BUTTERFLIES/2)
         nids = list(pids)
         nids.reverse()
@@ -86,17 +86,20 @@ class BDClient(Client):
         self.bars[(strike, right, show)] = (timestamp, open_, high, low, close, 
                                             volume, wap, count)
 
-        if strike == -1 and show == 'BID':
+        if strike == -1 and show == 'TRADES':
             self.gen_strikes(close, self.interval)
 
         self.l = [self.bars[x][0] for x in self.show_req.values()]
         if self.l.count(timestamp) + self.l.count(None) == len(self.l):
             try:
                 flies = self.compute_fly_prices()
-                
-                spot = self.bars[(-1, None, 'TRADES')]\
-                       + (self.bars[(-1, None, 'BID')][4], 
-                          self.bars[(-1, None, 'ASK')][4])
+
+                try:                
+                    spot = self.bars[(-1, None, 'TRADES')]\
+                           + (self.bars[(-1, None, 'BID')][4], 
+                              self.bars[(-1, None, 'ASK')][4])
+                except IndexError:
+                    spot = self.bars[(-1, None, 'TRADES')] + (None, None)
                 row = ['underlying=%s' % c.symbol, 'interval=%f' % c.interval]
                 for field, data in zip(self.FIELDS, spot + flies):
                     row += ['%s=%s' % (field, str(data))]
@@ -155,8 +158,8 @@ if __name__ == "__main__":
     osi_underlying_help += ' (eg SPX vs SPXW vs SPXQ). If not specified, then'
     osi_underlying_help += ' the \'symbol\' argument is used.'
     
-    start_bid_help = 'The initial starting bid for determining the'
-    start_bid_help += ' starting butterfly body strikes.'
+    start_price_help = 'The initial spot price for determining the'
+    start_price_help += ' starting butterfly body strikes.'
     interval_help = 'The strike interval used to create the butterfly combos.'
     expiry_help = 'The butterfly expiry. Format is %%y%%m%%d'
 
@@ -176,7 +179,7 @@ if __name__ == "__main__":
 
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
-    p.add_argument('start_bid', type=float, help=start_bid_help)
+    p.add_argument('start_price', type=float, help=start_price_help)
     p.add_argument('interval', type=float, help=interval_help)
     p.add_argument('expiry', type=int, help=expiry_help)
     p.add_argument('--osi_underlying', type=str, help=osi_underlying_help)
@@ -234,7 +237,7 @@ if __name__ == "__main__":
         sleep(10.01)
 
     # Start bars for the option chain
-    c.start_option_bars(args.start_bid, c.interval)
+    c.start_option_bars(args.start_price, c.interval)
     
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
