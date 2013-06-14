@@ -13,7 +13,7 @@ from com.ib.client import EWrapperMsgGenerator
 
 from ib.get_ib_data import *
 from ib.combo_orders import Butterfly
-from ib.contractkeys import Stock, OptionLocal
+from ib.contractkeys import Index, OptionLocal, Stock
 
 class BDClient(Client):
     SHOWS = ('BID', 'ASK', 'TRADES')
@@ -29,6 +29,7 @@ class BDClient(Client):
     strikerange = []
     strikes = []
     symbol = str()
+    osi_underlying = str()
     
     def compute_fly_prices(self):
         butter_strikes = self.strikes[self.BUFFER:-self.BUFFER]
@@ -62,7 +63,7 @@ class BDClient(Client):
         for i in pids: self.FIELDS += ['bp_r%02i_bid' % i, 'bp_r%02i_ask' % i]
 
     def gen_osi_symbol(self, strike, right):
-        return '%-6s%i%s%08i' % (c.symbol, c.expiry, right, strike*1000)
+        return '%-6s%i%s%08i' % (c.osi_underlying, c.expiry, right, strike*1000)
 
     def gen_strikerange(self):
         self.strikerange = range(0-self.BUTTERFLIES/2-self.BUFFER, 
@@ -145,7 +146,15 @@ if __name__ == "__main__":
 
     default_cid = 82
     default_api_port = 7496
-    symbol_help = 'The underlying ticker symbol.'
+    symbol_help = 'The underlying\'s ticker symbol.'
+    osi_underlying_help = 'The symbol used for the OSI code. This can differ'
+    osi_underlying_help += ' from the underlying ticker for various reasons,'
+    osi_underlying_help += ' like option contract size'
+    osi_underlying_help += ' (eg SPY vs SPY7 vs SPYJ)'
+    osi_underlying_help += ' or option contract expiry frequency'
+    osi_underlying_help += ' (eg SPX vs SPXW vs SPXQ). If not specified, then'
+    osi_underlying_help += ' the \'symbol\' argument is used.'
+    
     start_bid_help = 'The initial starting bid for determining the'
     start_bid_help += ' starting butterfly body strikes.'
     interval_help = 'The strike interval used to create the butterfly combos.'
@@ -166,10 +175,11 @@ if __name__ == "__main__":
     tablename_help = 'Default is butterfly_chains_[expiry]'
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument('symbol', type=str, help=symbol_help)
+    p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
     p.add_argument('start_bid', type=float, help=start_bid_help)
     p.add_argument('interval', type=float, help=interval_help)
     p.add_argument('expiry', type=int, help=expiry_help)
+    p.add_argument('--osi_underlying', type=str, help=osi_underlying_help)
     p.add_argument('-v', '--version', action='version', 
                    version='%(prog)s ' + __version__)
 
@@ -201,7 +211,9 @@ if __name__ == "__main__":
 
     # Set client parameters and connect
     c = BDClient(client_id=args.client_id)
-    c.symbol = args.symbol.upper()
+    c.symbol, underconkey = conkey_generator(args.symbol)
+    if args.osi_underlying: c.osi_underlying = args.osi_underlying.upper()
+    else: c.osi_underlying = c.symbol
     c.expiry = args.expiry
     if args.butterflies: c.BUTTERFLIES = args.butterflies
     if args.buffer: c.BUFFER = args.buffer
@@ -214,7 +226,7 @@ if __name__ == "__main__":
     c.connect(port=args.api_port)
 
     # Start bars for the underlying
-    undercon = c.request_contract_details(Stock(c.symbol))[0].m_summary
+    undercon = c.request_contract_details(underconkey)[0].m_summary
     for show in c.SHOWS:
         req_id = c.start_realtime_bars(undercon, show=show)
         c.show_req[req_id] = (-1, None, show)
