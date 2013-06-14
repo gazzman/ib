@@ -18,7 +18,7 @@ class BDClient(Client):
     SHOWS = ('BID', 'ASK', 'TRADES')
     FIELDS = ['timestamp', 'last_open', 'last_high', 'last_low', 'last_close',
               'volume', 'wap', 'count', 'bid', 'ask']
-    BUTTERFLIES = 8
+    BUTTERFLIES = 20
     BUFFER = 1
 
     bars = {}
@@ -52,13 +52,13 @@ class BDClient(Client):
         return flies
 
     def gen_fields(self):    
-        pids = range(1, self.BUTTERFLIES/2+1)
+        pids = range(0, self.BUTTERFLIES/2)
         nids = list(pids)
         nids.reverse()
-        for i in nids: self.FIELDS += ['bc_l%i_bid' % i, 'bc_l%i_ask' %i]
-        for i in pids: self.FIELDS += ['bc_r%i_bid' % i, 'bc_r%i_ask' %i]
-        for i in nids: self.FIELDS += ['bp_l%i_bid' % i, 'bp_l%i_ask' %i]
-        for i in pids: self.FIELDS += ['bp_r%i_bid' % i, 'bp_r%i_ask' %i]
+        for i in nids: self.FIELDS += ['bc_l%02i_bid' % i, 'bc_l%02i_ask' % i]
+        for i in pids: self.FIELDS += ['bc_r%02i_bid' % i, 'bc_r%02i_ask' % i]
+        for i in nids: self.FIELDS += ['bp_l%02i_bid' % i, 'bp_l%02i_ask' % i]
+        for i in pids: self.FIELDS += ['bp_r%02i_bid' % i, 'bp_r%02i_ask' % i]
 
     def gen_osi_symbol(self, strike, right):
         return '%-6s%i%s%08i' % (c.symbol, c.expiry, right, strike*1000)
@@ -92,8 +92,9 @@ class BDClient(Client):
             try:
                 flies = self.compute_fly_prices()
                 
-                spot = self.bars[(-1, None, 'TRADES')] + (self.bars[(-1, None, 'BID')][4], 
-                                                          self.bars[(-1, None, 'ASK')][4])
+                spot = self.bars[(-1, None, 'TRADES')]\
+                       + (self.bars[(-1, None, 'BID')][4], 
+                          self.bars[(-1, None, 'ASK')][4])
                 row = ['underlying=%s' % c.symbol, 'interval=%f' % c.interval]
                 for field, data in zip(self.FIELDS, spot + flies):
                     row += ['%s=%s' % (field, str(data))]
@@ -133,28 +134,45 @@ def cleanup(signal, frame):
     sys.exit(0)
 
 if __name__ == "__main__":
-    description = 'Start Interactive Brokers butterfly density rt bars.'
+    description = 'Start Interactive Brokers butterfly combo rt bars.'
+    description += ' This script starts realtime bars for butterfly chains'
+    description += ' both below and above the current spot price.'
+    description += ' It automatically detects the butterfly combos whose'
+    description += ' body strikes are immediately above and immediately below'
+    description += ' the current spot price.'
 
     default_cid = 82
-    butterflies_help = 'default is %i' % BDClient.BUTTERFLIES
-    buffer_help = 'default is %i' % BDClient.BUFFER
-    client_id_help = 'default is %i' % default_cid
-    expiry_help = 'format is %%y%%m%%d'
-    host_help = 'default is localhost'
-    tablename_help = 'default is butterfly_chains_[expiry]'
+    symbol_help = 'The underlying ticker symbol.'
+    start_bid_help = 'The initial starting bid for determining the'
+    start_bid_help += ' starting butterfly body strikes.'
+    interval_help = 'The strike interval used to create the butterfly combos.'
+    expiry_help = 'The butterfly expiry. Format is %%y%%m%%d'
+
+    butterflies_help = 'Total number of butterfly combos to track,'
+    butterflies_help += ' half on each side of the spot.'
+    butterflies_help += ' Default is %i' % BDClient.BUTTERFLIES
+    buffer_help = 'Number of extra butterly combos to track on each side'
+    buffer_help += ' beyond that specified in the --butterflies argument.'
+    buffer_help += ' This is to help ensure that there are enough combos being'
+    buffer_help += ' tracked in the event that the spot price moves beyond an' 
+    buffer_help += ' adjacent body strike. Should be increased if the spot'
+    buffer_help += ' is very volatile. Default is %i' % BDClient.BUFFER
+    client_id_help = 'TWS client id. Default is %i' % default_cid
+    host_help = 'Default is localhost'
+    tablename_help = 'Default is butterfly_chains_[expiry]'
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument('symbol', type=str)
-    p.add_argument('start_bid', type=float)
-    p.add_argument('interval', type=float)
+    p.add_argument('symbol', type=str, help=symbol_help)
+    p.add_argument('start_bid', type=float, help=start_bid_help)
+    p.add_argument('interval', type=float, help=interval_help)
     p.add_argument('expiry', type=int, help=expiry_help)
     p.add_argument('-v', '--version', action='version', 
                    version='%(prog)s ' + __version__)
 
     ds = p.add_argument_group('BDClient Settings')
-    ds.add_argument('--butterflies', type=int, choices=[4, 6, 8], 
+    ds.add_argument('--butterflies', type=int, choices=xrange(2, 42, 2), 
                     help=butterflies_help)
-    ds.add_argument('--buffer', type=int, choices=[1, 2, 3],
+    ds.add_argument('--buffer', type=int, choices=xrange(1, 6),
                     help=buffer_help)
     ds.add_argument('--client_id', type=int, default=default_cid,
                     help=client_id_help)
