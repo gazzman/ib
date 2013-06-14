@@ -4,6 +4,7 @@ __author__ = "gazzman"
 __copyright__ = "(C) 2013 gazzman GNU GPL 3."
 __contributors__ = []
 from decimal import Decimal
+from time import sleep
 import signal
 import socket
 import time as timemod
@@ -126,6 +127,7 @@ class BDClient(Client):
                     req_id = self.start_realtime_bars(contract, show=show)
                     self.show_req[req_id] = (strike, right, show)
                     self.bars[self.show_req[req_id]] = (None, )
+                    sleep(10.01)
 
 def cleanup(signal, frame):
     c.cancel_all_realtime_bars()
@@ -213,6 +215,7 @@ if __name__ == "__main__":
         req_id = c.start_realtime_bars(undercon, show=show)
         c.show_req[req_id] = (-1, None, show)
         c.bars[c.show_req[req_id]] = (None, )
+        sleep(10.01)
 
     # Start bars for the option chain
     c.start_option_bars(args.start_bid, c.interval)
