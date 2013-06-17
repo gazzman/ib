@@ -141,5 +141,6 @@ if __name__ == "__main__":
     req_id = c.request_historical_data(contract, **req_args)
     while req_id not in c.satisfied_requests.keys() + c.req_errs.keys():
         sleep(.25)
+    if req_id in c.req_errs.keys(): print >> sys.stderr, c.req_errs[req_id]
 
     c.disconnect()
