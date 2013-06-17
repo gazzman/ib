@@ -82,7 +82,7 @@ if __name__ == "__main__":
     bar_size_help = 'either 1 secs, 5 secs, 10 secs, 15 secs, 30 secs, 1 min, '
     bar_size_help += '2 mins, 3 mins, 5 mins, 10 mins, 15 mins, 20 mins, '
     bar_size_help += '30 mins, 1 hour, 2 hours, 3 hours, 4 hours, 8 hours, '
-    bar_size_help += '1 day, 1 week, 1 month'
+    bar_size_help += '1 day, 1W, 1M'
     show_help = 'TRADES, MIDPOINT, BID, ASK, BID_ASK, ' 
     show_help += 'HISTORICAL_VOLATILITY, OPTION_IMPLIED_VOLATILITY, ' 
     show_help += 'OPTION_VOLUME, OPTION_OPEN_INTEREST'
