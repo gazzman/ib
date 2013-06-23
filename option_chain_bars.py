@@ -228,14 +228,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
 
-    c.gen_option_contracts(args.right, args.strike_start,
-                           args.strike_interval, args.links)
-
     # Start bars for the option chain
     c.gen_option_contracts(args.right, args.strike_start,
                            args.strike_interval, args.links)
 
-    
     if args.historical:
         hargs = dict([(k, ' '.join(args.__dict__[k]))
                       for k in ('end_time', 'duration') if args.__dict__[k]])
