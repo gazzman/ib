@@ -23,33 +23,34 @@ class ChainClient(Client):
     dbinfo = None
     host = None
     port = None
-    pkey = {'underlying': None,
-            'osi_underlying': None,
-            'timestamp': None,
-            'strike_start': None,
-            'strike_interval': None,
-            'expiry': None}
+    mdata = {'underlying': None,
+             'osi_underlying': None,
+             'strike_interval': None,
+             'strike_start': None,
+             'expiry': None}
 
     def osi_symbol(self, right, strike):
-        return '%-6s%i%s%08i' % (self.pkey['osi_underlying'], 
-                                 self.pkey['expiry'], 
+        return '%-6s%i%s%08i' % (self.mdata['osi_underlying'], 
+                                 self.mdata['expiry'], 
                                  right.upper(), strike*1000)
 
-    def gen_option_contracts(self, right, strike_start,
-                             strike_interval, links):
+    def gen_option_contracts(self, right, links):
         if right.lower() == 'b': rights = ['C', 'P']
         else: rights = [right.upper()]
 
         conkeys = [(OptionLocal(self.osi_symbol(r, 
-                                strike_start + i*strike_interval)),
+                                                self.mdata['strike_start'] 
+                                            + i*self.mdata['strike_interval'])),
                     '%s_%02i' % (r.lower(), i))
                    for r in rights for i in xrange(0, links)]
         self.contracts = [(self.request_contract_details(conkey)[0].m_summary,
                            colnamebase)
                           for conkey, colnamebase in conkeys]
+        self.mdatastring = ['%s=%s' % x for x in self.mdata.items()]
 
-    def get_data(self, historical=False, end_time=None, duration='7200 S',
-                            bar_size='5 secs'):
+
+    def get_data(self, historical=False, end_time=None, duration='7200 S', 
+                 bar_size='5 secs'):
         try:
             assert type(self.contracts) is not tuple
         except AssertionError:
@@ -57,20 +58,8 @@ class ChainClient(Client):
             msg2 = "Try running 'gen_option_contracts' first."
             logger.error('%s %s', msg1, msg2)
 
-        undercon = c.request_contract_details(self.underconkey)[0].m_summary
-        for show in SHOWS:
-            if historical:
-                req_id = self.request_historical_data(undercon, 
-                                                      end_time=end_time,
-                                                      duration=duration, 
-                                                      bar_size=bar_size, 
-                                                      show=show.upper())
-            else:
-                req_id = self.start_realtime_bars(undercon, show=show.upper())
-            self.req_map[req_id] = show
-            sleep(10.01)
-
-            for contract, colnamebase in self.contracts:
+        for contract, colnamebase in self.contracts:
+            for show in SHOWS:
                 if historical:
                     req_id = self.request_historical_data(contract, 
                                                           end_time=end_time, 
@@ -95,14 +84,13 @@ class ChainClient(Client):
             msg = EWrapperMsgGenerator.historicalData(reqId, date, open_, high, 
                                                       low, close, volume, 
                                                       count, WAP, hasGaps)
-            print self.pkey['underlying'], base, msg
+            print self.mdata['underlying'], base, msg
         else:
-            self.pkey['timestamp'] = date
-            bar = [('open', open_), ('high', high), ('low', low),
-                   ('close', close), ('hasgaps', hasGaps)]
+            bar = [('open', open_), ('high', high), 
+                   ('low', low), ('close', close), ('hasgaps', hasGaps)]
             if 'trade' in base:
                 bar += [('volume', volume), ('count', count), ('wap', WAP)]
-            data = ['%s=%s' % x for x in self.pkey.items()]
+            data = self.mdatastring + ['timestamp=%s' % date]
             data += ['%s_%s=%s' % (base, name, data) for name, data in bar]
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -115,10 +103,8 @@ class ChainClient(Client):
         assert type(hasGaps) is int
         if hasGaps == 0: hasGaps = 'False'
         else: hasGaps = 'True'
-        if 'finished' not in date.lower():
-            self.data_handler(reqId, date, open_, high, low, close, volume, 
-                              count, WAP, hasGaps)
-#        self.logger.info('Received data for %s: %s', reqId, self.req_map[reqId])
+        self.data_handler(reqId, date, open_, high, low, close, volume, 
+                            count, WAP, hasGaps)
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
                     count):
@@ -141,7 +127,7 @@ if __name__ == "__main__":
 
     default_cid = 67
     default_api_port = 7496
-    default_links = 16
+    default_links = 32
     default_right = 'b'
     end_time_help = DTFMT.replace('%', '%%')
     duration_help = '<integer> <unit>, unit is either S, D, W, M, Y.'
@@ -201,7 +187,9 @@ if __name__ == "__main__":
 
     args = p.parse_args()
     if not args.tablename: 
-        args.tablename = 'chain_%i_links_%02i' % (args.expiry, args.links)
+        args.tablename = 'chain_%i_links_%02i_right_%s' % (args.expiry, 
+                                                            args.links,
+                                                            args.right)
 
     today = datetime.now().date().isoformat()
     mkt_close = datetime.strptime('%s%s' % (today, '16:00:30'), 
@@ -215,22 +203,21 @@ if __name__ == "__main__":
     c.host = args.host
     c.port = args.port
 
-    c.pkey['underlying'], c.underconkey = conkey_generator(args.symbol)
+    c.mdata['underlying'], c.underconkey = conkey_generator(args.symbol)
     if args.osi_underlying: 
-        c.pkey['osi_underlying'] = args.osi_underlying.upper()
+        c.mdata['osi_underlying'] = args.osi_underlying.upper()
     else: 
-        c.pkey['osi_underlying'] = c.pkey['underlying']
-    c.pkey['strike_start'] = args.strike_start
-    c.pkey['strike_interval'] = args.strike_interval    
-    c.pkey['expiry'] = args.expiry
+        c.mdata['osi_underlying'] = c.mdata['underlying']
+    c.mdata['strike_start'] = args.strike_start
+    c.mdata['strike_interval'] = args.strike_interval    
+    c.mdata['expiry'] = args.expiry
 
     c.connect(port=args.api_port)
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
 
     # Start bars for the option chain
-    c.gen_option_contracts(args.right, args.strike_start,
-                           args.strike_interval, args.links)
+    c.gen_option_contracts(args.right, args.links)
 
     if args.historical:
         hargs = dict([(k, ' '.join(args.__dict__[k]))
