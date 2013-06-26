@@ -75,7 +75,8 @@ class ChainClient(Client):
                     req_id = self.start_realtime_bars(contract, 
                                                       show=show.upper())
                 self.req_map[req_id] = (colnamebase, show)
-                while not self.finished_hist_req: sleep(1)
+                while not (self.finished_hist_req or req_id in self.req_errs):
+                    sleep(1)
                 time_to_wait = 10.01 - (datetime.now() - s).seconds
                 sleep(max(0, time_to_wait))
 
@@ -108,8 +109,8 @@ class ChainClient(Client):
     def historicalData(self, reqId, date, open_, high, low, close, volume, 
                        count, WAP, hasGaps):
         assert type(hasGaps) is int
-        if hasGaps == 0: hasGaps = 'False'
-        else: hasGaps = 'True'
+        if hasGaps == 0: hasGaps = False
+        else: hasGaps = True
         self.data_handler(reqId, date, open_, high, low, close, volume, 
                             count, WAP, hasGaps)
         if 'finished' in date: self.finished_hist_req = True
