@@ -3,6 +3,7 @@ __version__ = ".00"
 __author__ = "gazzman"
 __copyright__ = "(C) 2013 gazzman GNU GPL 3."
 __contributors__ = []
+from datetime import datetime
 from decimal import Decimal
 from time import sleep
 import signal
@@ -23,6 +24,7 @@ class ChainClient(Client):
     dbinfo = None
     host = None
     port = None
+    finished_hist_req = False
     mdata = {'underlying': None,
              'osi_underlying': None,
              'strike_interval': None,
@@ -60,17 +62,22 @@ class ChainClient(Client):
 
         for contract, colnamebase in self.contracts:
             for show in SHOWS:
+                s = datetime.now()
                 if historical:
+                    self.finished_hist_req = False
                     req_id = self.request_historical_data(contract, 
                                                           end_time=end_time, 
                                                           duration=duration, 
                                                           bar_size=bar_size, 
                                                           show=show.upper())
                 else:
+                    self.finished_hist_req = True
                     req_id = self.start_realtime_bars(contract, 
                                                       show=show.upper())
                 self.req_map[req_id] = (colnamebase, show)
-                sleep(10.01)
+                while not self.finished_hist_req: sleep(1)
+                time_to_wait = 10.01 - (datetime.now() - s).seconds
+                sleep(max(0, time_to_wait))
 
     def data_handler(self, reqId, date, open_, high, low, close, volume, count, 
                      WAP, hasGaps=False):
@@ -86,8 +93,8 @@ class ChainClient(Client):
                                                       count, WAP, hasGaps)
             print self.mdata['underlying'], base, msg
         else:
-            bar = [('open', open_), ('high', high), 
-                   ('low', low), ('close', close), ('hasgaps', hasGaps)]
+            bar = [('open', open_), ('high', high), ('low', low), 
+                   ('close', close), ('hasgaps', hasGaps)]
             if 'trade' in base:
                 bar += [('volume', volume), ('count', count), ('wap', WAP)]
             data = self.mdatastring + ['timestamp=%s' % date]
@@ -105,6 +112,7 @@ class ChainClient(Client):
         else: hasGaps = 'True'
         self.data_handler(reqId, date, open_, high, low, close, volume, 
                             count, WAP, hasGaps)
+        if 'finished' in date: self.finished_hist_req = True
 
     def realtimeBar(self, reqId, time, open_, high, low, close, volume, wap, 
                     count):
