@@ -79,7 +79,7 @@ if __name__ == "__main__":
     description += 'Currently supports '
     description += 'indexes, equities, equity options, and forex.'
 
-    default_cid = 67
+    default_cid = 68
     default_api_port = 7496
     default_show = 'TRADES'
     default_bar_size = ['1', 'min']
