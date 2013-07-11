@@ -160,7 +160,7 @@ if __name__ == "__main__":
     client_id_help = 'TWS client id. Default is %i' % default_cid
     api_port_help = 'TWS API port. Default is %i' % default_api_port
     host_help = 'Default is localhost'
-    tablename_help = 'Default is option_chain_[expiry]'
+    tablename_help = 'Default is chain_[EXPIRY]_links_[LINKS]_right_[RIGHT]'
 
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
@@ -225,9 +225,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
 
-    # Start bars for the option chain
     c.gen_option_contracts(args.right, args.links)
 
+    # Start bars for the option chain
     if args.historical:
         hargs = dict([(k, ' '.join(args.__dict__[k]))
                       for k in ('end_time', 'duration') if args.__dict__[k]])
