@@ -139,6 +139,8 @@ if __name__ == "__main__":
     default_links = 32
     default_right = 'b'
     end_time_help = DTFMT.replace('%', '%%')
+    bar_size_help = '1 sec, 5 secs, 15 secs, 30 secs, 1 min, 2 mins, 3 mins, '
+    bar_size_help += '5 mins, 15 mins, 30 mins, 1 hour, 1 day'
     duration_help = '<integer> <unit>, unit is either S, D, W, M, Y.'
     symbol_help = 'The underlying\'s ticker symbol.'
     osi_underlying_help = 'The symbol used for the OSI code. This can differ'
@@ -160,7 +162,7 @@ if __name__ == "__main__":
     client_id_help = 'TWS client id. Default is %i' % default_cid
     api_port_help = 'TWS API port. Default is %i' % default_api_port
     host_help = 'Default is localhost'
-    tablename_help = 'Default is chain_[EXPIRY]_links_[LINKS]_right_[RIGHT]'
+    tablename_help = 'Default is chain_[EXPIRY]_links_[LINKS]_right_[RIGHT]_bar_size_[BARSIZE]'
 
     p = argparse.ArgumentParser(description=description)
     p.add_argument('symbol', type=str, help=symbol_help, nargs='+')
@@ -176,6 +178,7 @@ if __name__ == "__main__":
 
     hist = p.add_argument_group('ChainClient Settings')
     hist.add_argument('--historical', action='store_true')
+    hist.add_argument('--bar_size', help=bar_size_help, nargs='+', default=['5', 'secs'])
     hist.add_argument('--end_time', help=end_time_help, nargs='+')
     hist.add_argument('--duration', help=duration_help, nargs='+')
 
@@ -196,9 +199,10 @@ if __name__ == "__main__":
 
     args = p.parse_args()
     if not args.tablename: 
-        args.tablename = 'chain_%i_links_%02i_right_%s' % (args.expiry, 
-                                                            args.links,
-                                                            args.right)
+        args.tablename = 'chain_%i_links_%02i_right_%s_bar_size_%s' % (args.expiry, 
+                                                                      args.links,
+                                                                      args.right,
+                                                                      ''.join(args.bar_size))
 
     today = datetime.now().date().isoformat()
     mkt_close = datetime.strptime('%s%s' % (today, '16:00:30'), 
@@ -206,7 +210,6 @@ if __name__ == "__main__":
 
     # Set client parameters and connect
     c = ChainClient(client_id=args.client_id)
-
     c.dbinfo = '%s,%s,%s,%s,%s' % (args.database, args.schema, args.tablename, 
                                    args.links, args.right)
     c.host = args.host
@@ -230,7 +233,7 @@ if __name__ == "__main__":
     # Start bars for the option chain
     if args.historical:
         hargs = dict([(k, ' '.join(args.__dict__[k]))
-                      for k in ('end_time', 'duration') if args.__dict__[k]])
+                      for k in ('end_time', 'duration', 'bar_size') if args.__dict__[k]])
         c.get_data(historical=True, **hargs)
 
     # Sleep until the end of the day
